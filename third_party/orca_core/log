@@ -1,0 +1,242 @@
+❯ sudo uv run python scripts/setup.py orca_core/models/v2/orcahand_right/config.yaml
+============================================================
+  ORCA HAND SETUP
+  Full calibration and verification workflow
+  Type 's' at any prompt or Ctrl+C to skip a step
+============================================================
+Warning: Motor ID 2 (Joint: index_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 3 (Joint: index_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 4 (Joint: index_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 5 (Joint: middle_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 6 (Joint: ring_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 7 (Joint: ring_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 8 (Joint: ring_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 9 (Joint: middle_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 10 (Joint: middle_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 11 (Joint: pinky_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 12 (Joint: pinky_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 13 (Joint: pinky_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 15 (Joint: thumb_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 16 (Joint: thumb_dip) has not been fully calibrated (missing motor limits).
+connect() -> success=True, message=Connection successful
+  Connected and ready.
+
+============================================================
+  STEP 1: TENSION — Initial tensioning
+============================================================
+  Motors will move to set initial tension, then hold.
+  Use the tensioning tool or pliers to turn the top spool clockwise.
+  Do NOT overtension — just enough to remove slack.
+
+>>> Press ENTER to begin tensioning, or 's' to skip... ('s' to skip) 
+  Press Ctrl+C when tensioning is done.
+Holding motors. Please tension carefully. Press Ctrl+C to exit.
+^C
+  Tension complete.
+
+>>> Place the hand in a neutral position, then press ENTER... ('s' to skip) 
+
+============================================================
+  STEP 2: CALIBRATE — First calibration (with wrist)
+============================================================
+  Press Ctrl+C to skip.
+  Calibrating all joints including wrist...
+Offsets: {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0, 5: 0.0, 6: 0.0, 7: 0.0, 8: 0.0, 9: 0.0, 10: 0.0, 11: 0.0, 12: 0.0, 13: 0.0
+, 14: 0.0, 15: 0.0, 16: 0.0, 17: 0.0}
+Enabling torque for the following motor:  17
+Motor 17 corresponding to joint thumb_cmc reached the limit at 6.27398157119751 rad.
+  (Offset adjusted: limit now at 6.27398157119751 rad)
+Enabling torque for the following motor:  17
+Motor 17 corresponding to joint thumb_cmc reached the limit at 0.013805827125906944 rad.
+Joint calibrated:  thumb_cmc
+Warning: Motor ID 1 (Joint: wrist) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 2 (Joint: index_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 3 (Joint: index_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 4 (Joint: index_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 5 (Joint: middle_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 6 (Joint: ring_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 7 (Joint: ring_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 8 (Joint: ring_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 9 (Joint: middle_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 10 (Joint: middle_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 11 (Joint: pinky_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 12 (Joint: pinky_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 13 (Joint: pinky_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 14 (Joint: thumb_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 15 (Joint: thumb_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 16 (Joint: thumb_dip) has not been fully calibrated (missing motor limits).
+Enabling torque for the following motor:  14
+Motor 14 corresponding to joint thumb_abd reached the limit at 6.275515556335449 rad.
+  (Offset adjusted: limit now at 6.275515556335449 rad)
+Enabling torque for the following motor:  14
+Motor 14 corresponding to joint thumb_abd reached the limit at 0.05062136426568031 rad.
+Joint calibrated:  thumb_abd
+Warning: Motor ID 1 (Joint: wrist) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 2 (Joint: index_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 3 (Joint: index_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 4 (Joint: index_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 5 (Joint: middle_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 6 (Joint: ring_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 7 (Joint: ring_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 8 (Joint: ring_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 9 (Joint: middle_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 10 (Joint: middle_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 11 (Joint: pinky_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 12 (Joint: pinky_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 13 (Joint: pinky_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 15 (Joint: thumb_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 16 (Joint: thumb_dip) has not been fully calibrated (missing motor limits).
+Enabling torque for the following motor:  15
+Motor 15 corresponding to joint thumb_mcp reached the limit at 6.269379615783691 rad.
+  (Offset adjusted: limit now at 6.269379615783691 rad)
+Enabling torque for the following motor:  15
+Motor 15 corresponding to joint thumb_mcp reached the limit at 0.06749515235424042 rad.
+Joint calibrated:  thumb_mcp
+Warning: Motor ID 1 (Joint: wrist) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 2 (Joint: index_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 3 (Joint: index_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 4 (Joint: index_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 5 (Joint: middle_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 6 (Joint: ring_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 7 (Joint: ring_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 8 (Joint: ring_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 9 (Joint: middle_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 10 (Joint: middle_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 11 (Joint: pinky_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 12 (Joint: pinky_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 13 (Joint: pinky_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 16 (Joint: thumb_dip) has not been fully calibrated (missing motor limits).
+Enabling torque for the following motor:  16
+Motor 16 corresponding to joint thumb_dip reached the limit at 6.27244758605957 rad.
+  (Offset adjusted: limit now at 6.27244758605957 rad)
+Enabling torque for the following motor:  16
+Motor 16 corresponding to joint thumb_dip reached the limit at 0.10431069135665894 rad.
+Joint calibrated:  thumb_dip
+Warning: Motor ID 1 (Joint: wrist) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 2 (Joint: index_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 3 (Joint: index_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 4 (Joint: index_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 5 (Joint: middle_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 6 (Joint: ring_abd) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 7 (Joint: ring_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 8 (Joint: ring_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 9 (Joint: middle_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 10 (Joint: middle_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 11 (Joint: pinky_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 12 (Joint: pinky_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 13 (Joint: pinky_abd) has not been fully calibrated (missing motor limits).
+Enabling torque for the following motor:  4
+Enabling torque for the following motor:  5
+WARNING:root:Failed to write current 46 to motor 2 (result=-6, error=0)
+Enabling torque for the following motor:  6
+Enabling torque for the following motor:  13
+Motor 6 corresponding to joint ring_abd reached the limit at 6.269379615783691 rad.
+  (Offset adjusted: limit now at 6.269379615783691 rad)
+Motor 4 corresponding to joint index_abd reached the limit at 6.269379615783691 rad.
+  (Offset adjusted: limit now at 6.269379615783691 rad)
+Motor 13 corresponding to joint pinky_abd reached the limit at 6.27244758605957 rad.
+  (Offset adjusted: limit now at 6.27244758605957 rad)
+Motor 5 corresponding to joint middle_abd reached the limit at 6.241767883300781 rad.
+  (Offset adjusted: limit now at 6.195748329162598 rad)
+Enabling torque for the following motor:  4
+Enabling torque for the following motor:  5
+Enabling torque for the following motor:  6
+Enabling torque for the following motor:  13
+Motor 5 corresponding to joint middle_abd reached the limit at 0.08590292185544968 rad.
+Motor 13 corresponding to joint pinky_abd reached the limit at 0.1902136206626892 rad.
+Motor 4 corresponding to joint index_abd reached the limit at 0.08130098134279251 rad.
+Motor 6 corresponding to joint ring_abd reached the limit at 0.03528155758976936 rad.
+Joint calibrated:  index_abd
+Joint calibrated:  middle_abd
+Joint calibrated:  ring_abd
+Joint calibrated:  pinky_abd
+Warning: Motor ID 1 (Joint: wrist) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 2 (Joint: index_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 3 (Joint: index_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 7 (Joint: ring_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 8 (Joint: ring_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 9 (Joint: middle_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 10 (Joint: middle_mcp) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 11 (Joint: pinky_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 12 (Joint: pinky_mcp) has not been fully calibrated (missing motor limits).
+Enabling torque for the following motor:  3
+Enabling torque for the following motor:  10
+Enabling torque for the following motor:  7
+Enabling torque for the following motor:  12
+Motor 12 corresponding to joint pinky_mcp reached the limit at 6.269379615783691 rad.
+  (Offset adjusted: limit now at 6.269379615783691 rad)
+Motor 7 corresponding to joint ring_mcp reached the limit at 6.267845630645752 rad.
+  (Offset adjusted: limit now at 6.267845630645752 rad)
+Motor 10 corresponding to joint middle_mcp reached the limit at 6.275515556335449 rad.
+  (Offset adjusted: limit now at 6.275515556335449 rad)
+Motor 3 corresponding to joint index_mcp reached the limit at 6.263243675231934 rad.
+  (Offset adjusted: limit now at 6.263243675231934 rad)
+Enabling torque for the following motor:  3
+Enabling torque for the following motor:  10
+Enabling torque for the following motor:  7
+Enabling torque for the following motor:  12
+Motor 7 corresponding to joint ring_mcp reached the limit at 0.0613592304289341 rad.
+Motor 3 corresponding to joint index_mcp reached the limit at 0.05675728991627693 rad.
+Motor 10 corresponding to joint middle_mcp reached the limit at 0.06596117466688156 rad.
+Motor 12 corresponding to joint pinky_mcp reached the limit at 0.05675728991627693 rad.
+Joint calibrated:  index_mcp
+Joint calibrated:  middle_mcp
+Joint calibrated:  ring_mcp
+Joint calibrated:  pinky_mcp
+Warning: Motor ID 1 (Joint: wrist) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 2 (Joint: index_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 8 (Joint: ring_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 9 (Joint: middle_pip) has not been fully calibrated (missing motor limits).
+Warning: Motor ID 11 (Joint: pinky_pip) has not been fully calibrated (missing motor limits).
+Enabling torque for the following motor:  2
+Enabling torque for the following motor:  9
+Enabling torque for the following motor:  8
+Enabling torque for the following motor:  11
+Motor 8 corresponding to joint ring_pip reached the limit at 6.2663116455078125 rad.
+  (Offset adjusted: limit now at 6.2663116455078125 rad)
+Motor 2 corresponding to joint index_pip reached the limit at 6.267845630645752 rad.
+  (Offset adjusted: limit now at 6.267845630645752 rad)
+Motor 11 corresponding to joint pinky_pip reached the limit at 6.267845630645752 rad.
+  (Offset adjusted: limit now at 6.267845630645752 rad)
+Motor 9 corresponding to joint middle_pip reached the limit at 6.157398700714111 rad.
+  (Offset adjusted: limit now at 5.9533796310424805 rad)
+Enabling torque for the following motor:  2
+Enabling torque for the following motor:  9
+Enabling torque for the following motor:  8
+Enabling torque for the following motor:  11
+Motor 9 corresponding to joint middle_pip reached the limit at 0.006135923322290182 rad.
+Motor 11 corresponding to joint pinky_pip reached the limit at 0.00920388475060463 rad.
+Motor 8 corresponding to joint ring_pip reached the limit at 0.04601942375302315 rad.
+Motor 2 corresponding to joint index_pip reached the limit at 0.07363107800483704 rad.
+Joint calibrated:  index_pip
+Joint calibrated:  middle_pip
+Joint calibrated:  ring_pip
+Joint calibrated:  pinky_pip
+Warning: Motor ID 1 (Joint: wrist) has not been fully calibrated (missing motor limits).
+Enabling torque for the following motor:  1
+Motor 1 corresponding to joint wrist reached the limit at 6.270146369934082 rad.
+  (Offset adjusted: limit now at 6.270913600921631 rad)
+Enabling torque for the following motor:  1
+Motor 1 corresponding to joint wrist reached the limit at 0.009817476384341717 rad.
+Joint calibrated:  wrist
+  Calibration complete.
+
+============================================================
+  STEP 3: TENSION — Second tensioning
+============================================================
+  Motors will move to set initial tension, then hold.
+  Use the tensioning tool or pliers to turn the top spool clockwise.
+  Do NOT overtension — just enough to remove slack.
+
+>>> Press ENTER to begin tensioning, or 's' to skip... ('s' to skip) 
+  Press Ctrl+C when tensioning is done.
+Holding motors. Please tension carefully. Press Ctrl+C to exit.
+^C
+  Tension complete.
+
+============================================================
+  STEP 4: NEUTRAL POSITION
+============================================================
+  Moving hand to neutral position...
+  Press Ctrl+C to skip.
+
