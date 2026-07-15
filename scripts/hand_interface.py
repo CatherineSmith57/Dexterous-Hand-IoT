@@ -181,3 +181,106 @@ def cleanup():
         hand = None
         _connected = False
         _calibrated = False
+
+# 放在 hand_interface.py 里
+
+def do_joint_command(joint_positions: dict, hold_time_sec: float = 3.0) -> dict:
+    """
+    接收上层传过来的关节角度字典，驱动对应的关节。
+
+    参数示例:
+        joint_positions = {
+            "thumb_mcp": 45.0,    # 单位：度
+            "index_mcp": 60.0,
+            ...
+        }
+
+    返回:
+        {
+            "status": "completed" | "failed",
+            "error_code": 0 | 1001 | 1002 | 1007,
+            "message": "描述信息"
+        }
+    """
+    # 1. 检查连接
+    if not _connected or hand is None:
+        return {"status": "failed", "error_code": 1001, "message": "Hand not connected"}
+
+    # 2. 检查校准
+    if not _calibrated:
+        return {"status": "failed", "error_code": 1002, "message": "Hand not calibrated"}
+
+    # 3. 验证关节名是否合法
+    valid_joints = {
+        "wrist",                     # ID 1
+        "thumb_cmc", "thumb_abd", "thumb_mcp", "thumb_dip",   # ID 17,14,15,16
+        "index_abd", "index_mcp", "index_pip",                 # ID 4,3,2
+        "middle_abd", "middle_mcp", "middle_pip",              # ID 5,10,9
+        "ring_abd", "ring_mcp", "ring_pip",                    # ID 6,7,8
+        "pinky_abd", "pinky_mcp", "pinky_pip",                 # ID 13,12,11
+    }
+
+    invalid = [j for j in joint_positions if j not in valid_joints]
+    if invalid:
+        return {
+            "status": "failed",
+            "error_code": 1003,
+            "message": f"Invalid joint names: {invalid}"
+        }
+
+    # 4. 检查角度是否在 ROM 范围内
+    rom_limits = {
+        "wrist":        (-65, 35),
+        "thumb_cmc":    (-45, 33),
+        "thumb_abd":    (-18, 55),
+        "thumb_mcp":    (-60, 90),
+        "thumb_dip":    (-55, 107),
+        "index_abd":    (-30, 25),
+        "index_mcp":    (-60, 100),
+        "index_pip":    (-15, 107),
+        "middle_abd":   (-27, 27),
+        "middle_mcp":   (-60, 100),
+        "middle_pip":   (-15, 107),
+        "ring_abd":     (-27, 27),
+        "ring_mcp":     (-60, 100),
+        "ring_pip":     (-15, 107),
+        "pinky_abd":    (-30, 30),
+        "pinky_mcp":    (-60, 100),
+        "pinky_pip":    (-15, 107),
+    }
+
+    out_of_range = []
+    for joint, angle in joint_positions.items():
+        lo, hi = rom_limits[joint]
+        if angle < lo or angle > hi:
+            out_of_range.append(f"{joint}: {angle}° (range {lo}~{hi}°)")
+
+    if out_of_range:
+        return {
+            "status": "failed",
+            "error_code": 1003,
+            "message": "Joint angles out of range: " + "; ".join(out_of_range)
+        }
+
+    # 5. 执行关节运动
+    try:
+        hand.set_joint_positions(
+            joint_positions,
+            num_steps=25
+        )
+
+        import time
+        time.sleep(hold_time_sec)
+
+        return {
+            "success": True,
+            "execution_status": "completed",
+            "error_code": 0,
+            "error_message": ""
+        }
+    except Exception as e:
+        return {
+            "status": "failed",
+            "error_code": 1007,
+            "message": str(e)
+        }
