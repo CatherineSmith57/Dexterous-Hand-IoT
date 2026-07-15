@@ -141,4 +141,4 @@ team_project/
 
 详细分工请看：
 
-1. [docs/三人分层分工表_本周任务_接口约定.md](/D:/IoT/team_project/docs/三人分层分工表_本周任务_接口约定.md)
+1. [docs/team_roles_week1_and_interface_contract.md](/D:/IoT/team_project/docs/team_roles_week1_and_interface_contract.md)
