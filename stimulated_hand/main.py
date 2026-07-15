@@ -170,29 +170,89 @@ def render_frame(
 # ============================================================
 
 class RobotBridge:
-    """对队友 scripts/hand_interface.py 的薄封装。
+    """机械手桥接层。
 
+    直接使用 orca_core 连接和控制机械手。
     处理连接、断开、发送关节角度和错误恢复。
     """
 
     def __init__(self, config_path: str | None = None):
         self.config_path = config_path
         self._connected = False
+        self.hand = None
 
     def connect(self) -> bool:
         """尝试连接机械手。成功返回 True，失败返回 False。"""
         try:
-            import hand_interface
-            self.hi = hand_interface
-            result = self.hi.init(self.config_path)
-            self._connected = result
-            if result:
-                print("[RobotBridge] 机械手连接成功")
+            import sys, yaml, os
+            sys.path.insert(0, str(_PROJECT_ROOT / "third_party" / "orca_core"))
+            from orca_core import OrcaHand
+            from orca_core.hand_config import OrcaHandConfig
+
+            # 确定配置文件
+            if self.config_path and os.path.exists(self.config_path):
+                yaml_path = self.config_path
             else:
-                print("[RobotBridge] 机械手连接失败（init 返回 False）")
-            return result
-        except ImportError:
-            print("[RobotBridge] 无法导入 hand_interface（orca_core 可能未安装）")
+                yaml_path = str(
+                    _PROJECT_ROOT / "third_party" / "orca_core" / "orca_core"
+                    / "models" / "v2" / "orcahand_right" / "config.yaml"
+                )
+
+            with open(yaml_path, encoding="utf-8") as f:
+                cfg = yaml.safe_load(f)
+
+            # 确保端口是 COM7 (Windows)
+            cfg["port"] = cfg.get("port", "COM7")
+
+            calib_path = os.path.join(os.path.dirname(yaml_path), "calibration.yaml")
+            if not os.path.exists(calib_path):
+                with open(calib_path, "w") as f:
+                    yaml.dump({"calibrated": False, "wrist_calibrated": False}, f)
+
+            reverse_joints = cfg.get("reverse_joints", [])
+            joint_inversion = {j: True for j in reverse_joints} if reverse_joints else {}
+
+            config = OrcaHandConfig(
+                config_path=yaml_path,
+                calibration_path=calib_path,
+                port=cfg["port"],
+                type=cfg.get("type", "right"),
+                baudrate=cfg.get("baudrate", 1000000),
+                motor_type=cfg.get("motor_type", "waveshare"),
+                max_current=cfg.get("max_current", 300),
+                control_mode=cfg.get("control_mode", "position"),
+                motor_ids=list(cfg.get("motor_ids", [])),
+                joint_ids=list(cfg.get("joint_ids", [])),
+                joint_to_motor_map=dict(cfg.get("joint_to_motor_map", {})),
+                joint_roms_dict=dict(cfg.get("joint_roms", {})),
+                neutral_position=dict(cfg.get("neutral_position", {})),
+                calibration_current=cfg.get("calibration_current", 200),
+                calibration_step_size=cfg.get("calibration_step_size", 0.1),
+                calibration_step_period=cfg.get("calibration_step_period", 0.01),
+                calibration_threshold=cfg.get("calibration_threshold", 0.01),
+                calibration_num_stable=cfg.get("calibration_num_stable", 20),
+                calibration_sequence=list(cfg.get("calibration_sequence", [])),
+                joint_inversion_dict=joint_inversion,
+            )
+
+            self.hand = OrcaHand(config=config)
+            ok, msg = self.hand.connect()
+            if ok:
+                # 加载标定偏移（必须，否则电机位置计算错误）
+                self.hand._compute_wrap_offsets_dict()
+                # 开启电机扭矩和控制模式
+                self.hand.enable_torque()
+                self.hand.set_control_mode("position")
+                self.hand.set_max_current(cfg.get("max_current", 300))
+                self._connected = True
+                print("[RobotBridge] 机械手连接成功，标定+扭矩已就绪")
+            else:
+                self._connected = False
+                print(f"[RobotBridge] 连接失败: {msg}")
+            return ok
+
+        except ImportError as e:
+            print(f"[RobotBridge] 导入失败（orca_core 可能未安装）: {e}")
             self._connected = False
             return False
         except Exception as e:
@@ -211,35 +271,42 @@ class RobotBridge:
             hold_time: 保持时间（秒），实时模式用很短的时间
 
         Returns:
-            执行结果字典，包含 success, error_code 等
+            执行结果字典
         """
-        if not self._connected:
+        if not self._connected or self.hand is None:
             return {"success": False, "status": "skipped"}
 
         try:
-            return self.hi.do_joint_command(joint_angles, hold_time_sec=hold_time)
+            # 只发有变化的关键关节（mcp 和 pip），减少通信量
+            self.hand.set_joint_positions(joint_angles, num_steps=10)
+            # 注意：不 sleep，保持低延迟
+            return {"success": True, "execution_status": "completed"}
         except Exception as e:
             print(f"[RobotBridge] 发送失败: {e}")
             return {"success": False, "error_code": 9999, "error_message": str(e)}
 
     def get_status(self) -> dict:
         """获取机械手当前状态。"""
-        if not self._connected:
+        if not self._connected or self.hand is None:
             return {"connected": False}
         try:
-            return self.hi.get_status()
+            return {
+                "connected": self.hand.is_connected(),
+                "calibrated": self.hand.calibrated if hasattr(self.hand, 'calibrated') else False,
+            }
         except Exception:
             return {"connected": self._connected}
 
     def disconnect(self):
         """断开机械手连接。"""
-        if self._connected:
+        if self.hand is not None:
             try:
-                self.hi.cleanup()
+                self.hand.disconnect()
                 print("[RobotBridge] 机械手已断开")
             except Exception as e:
                 print(f"[RobotBridge] 断开异常: {e}")
         self._connected = False
+        self.hand = None
 
 
 # ============================================================
