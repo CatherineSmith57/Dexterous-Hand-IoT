@@ -25,3 +25,6 @@ Thumbs.db
 *.tmp
 *.bak
 
+# AI sync files (local only, not for remote)
+ai_sync/
+
