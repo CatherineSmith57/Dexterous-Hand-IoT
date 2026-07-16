@@ -190,7 +190,8 @@ class FeetechClient(MotorClient):
                     'enabled' if enabled else 'disabled',
                     str(remaining_ids),
                 )
-            if retries == 0:
+            #if retries == 0:
+            if retries <= 0:
                 break
             if remaining_ids:
                 time.sleep(retry_interval)

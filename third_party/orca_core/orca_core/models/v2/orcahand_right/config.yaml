@@ -1,4 +1,5 @@
-port: /dev/ttyACM0
+# port: /dev/ttyACM0
+port: COM5
 version: 0.2.1
 baudrate: 1000000
 motor_type: waveshare
