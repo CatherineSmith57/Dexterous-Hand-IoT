@@ -393,6 +393,7 @@ class TestServiceClient(Node):
 
         label, req_dict = self._test_cases[self._test_index]
         self._send_command(label, req_dict)
+        return True
 
     def _send_command(self, label: str, req_dict: dict):
         """
