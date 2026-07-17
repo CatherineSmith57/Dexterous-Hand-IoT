@@ -38,7 +38,7 @@ for _ in range(10):
     _sd = _p
 
 from orca_core import OrcaHand, OrcaJointPositions
-from orca_core.hand_config import OrcaHandConfig
+# OrcaHandConfig not needed
 
 logger = logging.getLogger(__name__)
 
@@ -193,45 +193,40 @@ class HandBridge:
         -------
         bool
             初始化是否全部成功
-
-        Raises
-        ------
-        OrcaSerialError
-            串口连接失败时抛出，由上层节点捕获
         """
         try:
             logger.info(f"Initializing ORCA hand on port {self._port}...")
-            self._hand = OrcaHand(config=OrcaHandConfig(port=self._port, baudrate=self._baudrate))
-            logger.debug("OrcaHand instance created")
+            # 使用 orca_core 默认模型配置，端口在模型 config.yaml 中指定
+            # 如需自定义端口，需要修改 orca_core 模型配置或传入 config_path
+            self._hand = OrcaHand()
+            logger.debug("OrcaHand instance created (default model config)")
 
-            self._hand.connect()
-            logger.info(f"Serial connection established on {self._port}")
+            ok, msg = self._hand.connect()
+            if not ok:
+                logger.error(f"Device connection failed: {msg}")
+                self._last_error = {"code": 1002, "message": msg}
+                self._connected = False
+                self._initialized = False
+                return False
+            logger.info(f"Device connected: {self._port} — {msg}")
 
-            self._hand.calibrate()
-            logger.info("Device calibration complete")
+            # init_joints: 使能扭矩 + 检查标定（未标定则自动标定）
+            self._hand.init_joints()
+            self._calibrated = self._hand.calibrated
+            logger.info(f"Joints initialized (calibrated={self._calibrated})")
 
-            # 标定完成后使能电机
             self._motor_enabled = True
+            self._connected = True
             self._initialized = True
             logger.info("HandBridge initialization complete — device ready")
             return True
 
-        except IOError as e:
-            logger.error(f"[FATAL] Serial connection failed on {self._port}: {e}")
-            self._initialized = False
-            self._motor_enabled = False
-            raise
-
         except Exception as e:
-            logger.error(f"[FATAL] ORCA initialization error (code={e.error_code}): {e}")
+            logger.error(f"Initialization failed: {e}")
             self._initialized = False
             self._motor_enabled = False
-            return False
-
-        except Exception as e:
-            logger.exception(f"[FATAL] Unexpected error during initialization: {e}")
-            self._initialized = False
-            self._motor_enabled = False
+            self._connected = False
+            self._last_error = {"code": 1099, "message": str(e)}
             return False
 
     def shutdown(self) -> None:
@@ -639,59 +634,59 @@ class HandBridge:
             )
 
         except ValueError as e:
-            logger.error(f"Joint ROM error (code={e.error_code}): {e}")
+            logger.error(f"Joint ROM error (code=unknown): {e}")
             return self._make_result(
                 success=False,
                 execution_status="failed",
-                error_code=e.error_code,
+                error_code=1001,
                 error_message=str(e),
             )
         except ValueError as e:
-            logger.error(f"Invalid joint error (code={e.error_code}): {e}")
+            logger.error(f"Invalid joint error (code=unknown): {e}")
             return self._make_result(
                 success=False,
                 execution_status="failed",
-                error_code=e.error_code,
+                error_code=1001,
                 error_message=str(e),
             )
         except TimeoutError as e:
-            logger.error(f"Timeout error (code={e.error_code}): {e}")
+            logger.error(f"Timeout error (code=unknown): {e}")
             return self._make_result(
                 success=False,
                 execution_status="failed",
-                error_code=e.error_code,
+                error_code=1001,
                 error_message=str(e),
             )
         except IOError as e:
-            logger.error(f"Serial error (code={e.error_code}): {e}")
+            logger.error(f"Serial error (code=unknown): {e}")
             return self._make_result(
                 success=False,
                 execution_status="failed",
-                error_code=e.error_code,
+                error_code=1001,
                 error_message=f"Serial communication error: {e}",
             )
         except RuntimeError as e:
-            logger.error(f"Not connected (code={e.error_code}): {e}")
+            logger.error(f"Not connected (code=unknown): {e}")
             return self._make_result(
                 success=False,
                 execution_status="failed",
-                error_code=e.error_code,
+                error_code=1001,
                 error_message=str(e),
             )
         except RuntimeError as e:
-            logger.error(f"Not calibrated (code={e.error_code}): {e}")
+            logger.error(f"Not calibrated (code=unknown): {e}")
             return self._make_result(
                 success=False,
                 execution_status="failed",
-                error_code=e.error_code,
+                error_code=1001,
                 error_message=str(e),
             )
         except RuntimeError as e:
-            logger.error(f"Safety error (code={e.error_code}): {e}")
+            logger.error(f"Safety error (code=unknown): {e}")
             return self._make_result(
                 success=False,
                 execution_status="aborted",
-                error_code=e.error_code,
+                error_code=1001,
                 error_message=str(e),
             )
         except Exception as e:
@@ -794,28 +789,28 @@ class HandBridge:
             return self._make_result(success=True, execution_status="completed")
 
         except ValueError as e:
-            logger.error(f"Invalid gesture (code={e.error_code}): {e}")
+            logger.error(f"Invalid gesture (code=unknown): {e}")
             return self._make_result(
                 success=False, execution_status="failed",
-                error_code=e.error_code, error_message=str(e),
+                error_code=1001, error_message=str(e),
             )
         except RuntimeError as e:
-            logger.error(f"Not connected (code={e.error_code}): {e}")
+            logger.error(f"Not connected (code=unknown): {e}")
             return self._make_result(
                 success=False, execution_status="failed",
-                error_code=e.error_code, error_message=str(e),
+                error_code=1001, error_message=str(e),
             )
         except RuntimeError as e:
-            logger.error(f"Not calibrated (code={e.error_code}): {e}")
+            logger.error(f"Not calibrated (code=unknown): {e}")
             return self._make_result(
                 success=False, execution_status="failed",
-                error_code=e.error_code, error_message=str(e),
+                error_code=1001, error_message=str(e),
             )
         except IOError as e:
-            logger.error(f"Serial error (code={e.error_code}): {e}")
+            logger.error(f"Serial error (code=unknown): {e}")
             return self._make_result(
                 success=False, execution_status="failed",
-                error_code=e.error_code, error_message=f"Serial error: {e}",
+                error_code=1001, error_message=f"Serial error: {e}",
             )
         except Exception as e:
             logger.exception(f"Unexpected error during gesture execution: {e}")
@@ -876,17 +871,17 @@ class HandBridge:
             return self._make_result(success=True, execution_status="completed")
 
         except IOError as e:
-            logger.error(f"Reset failed: serial error (code={e.error_code}): {e}")
+            logger.error(f"Reset failed: serial error (code=unknown): {e}")
             return self._make_result(
                 success=False, execution_status="failed",
-                error_code=e.error_code,
+                error_code=1001,
                 error_message=f"Serial error during reset: {e}",
             )
         except Exception as e:
-            logger.error(f"Reset failed: ORCA error (code={e.error_code}): {e}")
+            logger.error(f"Reset failed: ORCA error (code=unknown): {e}")
             return self._make_result(
                 success=False, execution_status="failed",
-                error_code=e.error_code, error_message=str(e),
+                error_code=1001, error_message=str(e),
             )
         except Exception as e:
             logger.exception(f"Reset failed: unexpected error: {e}")
