@@ -64,21 +64,23 @@ GESTURE_MAPPING = {
     "point": "point_pose",
 }
 
-# ── 手势对应的全关节目标值（来自 orca_hand.py _gesture_to_targets）────
+# ── 手势对应的全关节目标值（17关节，与 JOINT_ORDER 顺序一致）────
 HAND_OPEN_TARGETS: Dict[str, float] = {
-    "thumb_mcp": 0, "thumb_pip": 0,
-    "index_mcp": 0, "index_pip": 0,
-    "middle_mcp": 0, "middle_pip": 0,
-    "ring_mcp": 0, "ring_pip": 0,
-    "pinky_mcp": 0, "pinky_pip": 0,
+    "wrist": 0.0,
+    "thumb_cmc": 0.0, "thumb_abd": 0.0, "thumb_mcp": 0.0, "thumb_dip": 0.0,
+    "index_abd": 0.0, "index_mcp": 0.0, "index_pip": 0.0,
+    "middle_abd": 0.0, "middle_mcp": 0.0, "middle_pip": 0.0,
+    "ring_abd": 0.0, "ring_mcp": 0.0, "ring_pip": 0.0,
+    "pinky_abd": 0.0, "pinky_mcp": 0.0, "pinky_pip": 0.0,
 }
 
 HAND_CLOSE_TARGETS: Dict[str, float] = {
-    "thumb_mcp": 50, "thumb_pip": 80,
-    "index_mcp": 80, "index_pip": 90,
-    "middle_mcp": 80, "middle_pip": 90,
-    "ring_mcp": 80, "ring_pip": 90,
-    "pinky_mcp": 80, "pinky_pip": 90,
+    "wrist": -8.0,
+    "thumb_cmc": 0.0, "thumb_abd": 50.0, "thumb_mcp": 50.0, "thumb_dip": 80.0,
+    "index_abd": 0.0, "index_mcp": 80.0, "index_pip": 90.0,
+    "middle_abd": 0.0, "middle_mcp": 80.0, "middle_pip": 90.0,
+    "ring_abd": 0.0, "ring_mcp": 80.0, "ring_pip": 90.0,
+    "pinky_abd": 0.0, "pinky_mcp": 80.0, "pinky_pip": 90.0,
 }
 
 
@@ -295,9 +297,9 @@ class HandBridge:
                 "calibrated": False,
                 "motor_enabled": False,
                 "joint_names": list(JOINT_ORDER),
-                "joint_positions": [0.0] * 10,
-                "joint_temperatures": [0.0] * 10,
-                "joint_torques": [0.0] * 10,
+                "joint_positions": [0.0] * len(JOINT_ORDER),
+                "joint_temperatures": [0.0] * len(JOINT_ORDER),
+                "joint_torques": [0.0] * len(JOINT_ORDER),
                 "fault_code": 1001,  # 未连接
                 "fault_message": "Device not initialized — OrcaHand is None",
                 "current_action": "idle",
@@ -355,9 +357,9 @@ class HandBridge:
             "calibrated": self._hand.calibrated if self._hand else False,
             "motor_enabled": self._motor_enabled,
             "joint_names": list(JOINT_ORDER),
-            "joint_positions": [0.0] * 10,
-            "joint_temperatures": [0.0] * 10,
-            "joint_torques": [0.0] * 10,
+            "joint_positions": [0.0] * len(JOINT_ORDER),
+            "joint_temperatures": [0.0] * len(JOINT_ORDER),
+            "joint_torques": [0.0] * len(JOINT_ORDER),
             "fault_code": 1006,  # 读取超时
             "fault_message": f"Status read error: {error_reason}",
             "current_action": "idle",

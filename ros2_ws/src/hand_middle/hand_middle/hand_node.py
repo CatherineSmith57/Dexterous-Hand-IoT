@@ -53,21 +53,12 @@ except ModuleNotFoundError:
     HandStatus = None  # type: ignore
     _MSG_AVAILABLE = False
 
-from .hand_bridge import HandBridge
+from .hand_bridge import HandBridge, JOINT_ORDER
 
 logger = logging.getLogger(__name__)
 
 # ── 北京时间时区 ───────────────────────────────────────────
 _CST = timezone(timedelta(hours=8))
-
-# ── 固定关节顺序（与 HandStatus.msg / hand_bridge.JOINT_ORDER 一致）──
-JOINT_ORDER = [
-    "thumb_mcp", "thumb_pip",
-    "index_mcp", "index_pip",
-    "middle_mcp", "middle_pip",
-    "ring_mcp", "ring_pip",
-    "pinky_mcp", "pinky_pip",
-]
 
 
 class HandNode(Node):
@@ -256,9 +247,9 @@ class HandNode(Node):
 
             # ── 关节数据 ───────────────────────────────────────
             joint_names = device_status.get("joint_names", JOINT_ORDER)
-            joint_positions = device_status.get("joint_positions", [0.0] * 10)
-            joint_temperatures = device_status.get("joint_temperatures", [0.0] * 10)
-            joint_torques = device_status.get("joint_torques", [0.0] * 10)
+            joint_positions = device_status.get("joint_positions", [0.0] * len(JOINT_ORDER))
+            joint_temperatures = device_status.get("joint_temperatures", [0.0] * len(JOINT_ORDER))
+            joint_torques = device_status.get("joint_torques", [0.0] * len(JOINT_ORDER))
 
             # 动态数组用 append 填充
             for name in joint_names:
@@ -312,8 +303,8 @@ class HandNode(Node):
             - command_type: str        指令类型
             - gesture_name: str        手势名（gesture模式）
             - amplitude: float32       开合幅度 0.0~1.0
-            - joint_names: string[10]  目标关节名数组
-            - joint_targets: float32[10] 目标角度数组
+            - joint_names: string[]   目标关节名数组（动态长度，17关节）
+            - joint_targets: float32[] 目标角度数组（动态长度，17关节）
             - hold_time_sec: float32   保持时间
             - return_to_neutral: bool  是否回中
         response : HandCommand.Response

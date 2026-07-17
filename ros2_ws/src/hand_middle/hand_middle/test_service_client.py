@@ -41,16 +41,36 @@ except ModuleNotFoundError:
     HandCommand = None  # type: ignore
     _SRV_AVAILABLE = False
 
+from .hand_bridge import JOINT_ORDER
+
 logger = logging.getLogger(__name__)
 
-# ── 固定关节顺序 ───────────────────────────────────────────
-JOINT_ORDER = [
-    "thumb_mcp", "thumb_pip",
-    "index_mcp", "index_pip",
-    "middle_mcp", "middle_pip",
-    "ring_mcp", "ring_pip",
-    "pinky_mcp", "pinky_pip",
-]
+
+def _empty_names():
+    """返回长度匹配 JOINT_ORDER 的全空关节名数组。"""
+    return [""] * len(JOINT_ORDER)
+
+
+def _empty_targets():
+    """返回长度匹配 JOINT_ORDER 的全零目标角度数组。"""
+    return [0.0] * len(JOINT_ORDER)
+
+
+def _make_arrays(specified: dict = None):
+    """从指定关节字典构建 (joint_names, joint_targets) 数组对。
+
+    未指定的关节填充 "" / 0.0。
+    """
+    specified = specified or {}
+    names, targets = [], []
+    for j in JOINT_ORDER:
+        if j in specified:
+            names.append(j)
+            targets.append(float(specified[j]))
+        else:
+            names.append("")
+            targets.append(0.0)
+    return names, targets
 
 
 class TestServiceClient(Node):
@@ -139,9 +159,6 @@ class TestServiceClient(Node):
         每个测试用例是一个 (label, request_dict) 元组。
         """
         # ── 通用请求模板 ─────────────────────────────────────
-        empty_joint_names = [""] * 10
-        empty_joint_targets = [0.0] * 10
-
         all_cases = []
 
         # ═══════════════════════════════════════════════════════
@@ -150,33 +167,32 @@ class TestServiceClient(Node):
         normal_flow = [
             ("[1/5] ENABLE motor", {
                 "command_type": "enable", "gesture_name": "",
-                "amplitude": 0.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 0.0, "return_to_neutral": True,
             }),
             ("[2/5] GESTURE: hand_close (fist)", {
                 "command_type": "gesture", "gesture_name": "hand_close",
-                "amplitude": 1.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 1.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 1.5, "return_to_neutral": True,
             }),
             ("[3/5] GESTURE: pinch_grasp", {
                 "command_type": "gesture", "gesture_name": "pinch_grasp",
-                "amplitude": 1.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 1.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 1.5, "return_to_neutral": True,
             }),
             ("[4/5] JOINT_CONTROL: index only", {
                 "command_type": "joint_control", "gesture_name": "",
                 "amplitude": 0.0,
-                "joint_names": ["index_mcp", "index_pip", "", "", "", "", "", "", "", ""],
-                "joint_targets": [45.0, 60.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "joint_spec": {"index_mcp": 45.0, "index_pip": 60.0},
                 "hold_time_sec": 1.5, "return_to_neutral": True,
             }),
             ("[5/5] DISABLE motor", {
                 "command_type": "disable", "gesture_name": "",
-                "amplitude": 0.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 0.0, "return_to_neutral": True,
             }),
         ]
@@ -187,16 +203,16 @@ class TestServiceClient(Node):
         gesture_tests = [
             ("[G1] ENABLE", {
                 "command_type": "enable", "gesture_name": "",
-                "amplitude": 0.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 0.0, "return_to_neutral": True,
             }),
             # 全部5种预定义手势
             *[
                 (f"[G2-{i+1}] GESTURE: {g}", {
                     "command_type": "gesture", "gesture_name": g,
-                    "amplitude": 1.0, "joint_names": empty_joint_names,
-                    "joint_targets": empty_joint_targets,
+                    "amplitude": 1.0, "joint_names": _empty_names(),
+                    "joint_targets": _empty_targets(),
                     "hold_time_sec": 1.0, "return_to_neutral": True,
                 })
                 for i, g in enumerate([
@@ -207,27 +223,27 @@ class TestServiceClient(Node):
             # 开合幅度插值
             ("[G3] GESTURE: hand_close amplitude=0.3 (slightly closed)", {
                 "command_type": "gesture", "gesture_name": "hand_close",
-                "amplitude": 0.3, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.3, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 1.0, "return_to_neutral": True,
             }),
             ("[G4] GESTURE: hand_close amplitude=0.7 (mostly closed)", {
                 "command_type": "gesture", "gesture_name": "hand_close",
-                "amplitude": 0.7, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.7, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 1.0, "return_to_neutral": True,
             }),
             # 上层手势标签映射
             ("[G5] GESTURE: fist (label → hand_close)", {
                 "command_type": "gesture", "gesture_name": "fist",
-                "amplitude": 1.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 1.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 1.0, "return_to_neutral": True,
             }),
             ("[G6] DISABLE", {
                 "command_type": "disable", "gesture_name": "",
-                "amplitude": 0.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 0.0, "return_to_neutral": True,
             }),
         ]
@@ -238,28 +254,36 @@ class TestServiceClient(Node):
         joint_tests = [
             ("[J1] ENABLE", {
                 "command_type": "enable", "gesture_name": "",
-                "amplitude": 0.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 0.0, "return_to_neutral": True,
             }),
             ("[J2] JOINT: thumb only", {
                 "command_type": "joint_control", "gesture_name": "",
                 "amplitude": 0.0,
-                "joint_names": ["thumb_mcp", "thumb_pip", "", "", "", "", "", "", "", ""],
-                "joint_targets": [30.0, 45.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "joint_spec": {
+                    "thumb_cmc": 15.0, "thumb_abd": 25.0,
+                    "thumb_mcp": 30.0, "thumb_dip": 45.0,
+                },
                 "hold_time_sec": 1.5, "return_to_neutral": True,
             }),
             ("[J3] JOINT: all fingers", {
                 "command_type": "joint_control", "gesture_name": "",
                 "amplitude": 0.0,
-                "joint_names": list(JOINT_ORDER),
-                "joint_targets": [30.0, 50.0, 45.0, 60.0, 45.0, 60.0, 45.0, 60.0, 45.0, 60.0],
+                "joint_spec": {
+                    "wrist": 0.0,
+                    "thumb_cmc": 15.0, "thumb_abd": 25.0, "thumb_mcp": 30.0, "thumb_dip": 50.0,
+                    "index_abd": 0.0, "index_mcp": 45.0, "index_pip": 60.0,
+                    "middle_abd": 0.0, "middle_mcp": 45.0, "middle_pip": 60.0,
+                    "ring_abd": 0.0, "ring_mcp": 45.0, "ring_pip": 60.0,
+                    "pinky_abd": 0.0, "pinky_mcp": 45.0, "pinky_pip": 60.0,
+                },
                 "hold_time_sec": 1.5, "return_to_neutral": True,
             }),
             ("[J4] DISABLE", {
                 "command_type": "disable", "gesture_name": "",
-                "amplitude": 0.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 0.0, "return_to_neutral": True,
             }),
         ]
@@ -270,34 +294,32 @@ class TestServiceClient(Node):
         error_tests = [
             ("[E1] Unknown command_type (expect fail)", {
                 "command_type": "do_backflip", "gesture_name": "",
-                "amplitude": 0.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 0.0, "return_to_neutral": True,
             }),
             ("[E2] Invalid gesture name (expect fail)", {
                 "command_type": "gesture", "gesture_name": "jazz_hands",
-                "amplitude": 1.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 1.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 1.0, "return_to_neutral": True,
             }),
             ("[E3] ROM exceeded: thumb_mcp=999° (expect fail)", {
                 "command_type": "joint_control", "gesture_name": "",
                 "amplitude": 0.0,
-                "joint_names": ["thumb_mcp", "", "", "", "", "", "", "", "", ""],
-                "joint_targets": [999.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "joint_spec": {"thumb_mcp": 999.0},
                 "hold_time_sec": 1.0, "return_to_neutral": True,
             }),
             ("[E4] Invalid joint: elbow_joint (expect fail)", {
                 "command_type": "joint_control", "gesture_name": "",
                 "amplitude": 0.0,
-                "joint_names": ["elbow_joint", "", "", "", "", "", "", "", "", ""],
-                "joint_targets": [45.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                "joint_spec": {"elbow_joint": 45.0},
                 "hold_time_sec": 1.0, "return_to_neutral": True,
             }),
             ("[E5] Amplitude out of range: 1.5 (expect fail)", {
                 "command_type": "gesture", "gesture_name": "hand_close",
-                "amplitude": 1.5, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 1.5, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 1.0, "return_to_neutral": True,
             }),
         ]
@@ -308,26 +330,26 @@ class TestServiceClient(Node):
         reset_tests = [
             ("[R1] DISABLE first", {
                 "command_type": "disable", "gesture_name": "",
-                "amplitude": 0.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 0.0, "return_to_neutral": True,
             }),
             ("[R2] RESET hardware", {
                 "command_type": "reset", "gesture_name": "",
-                "amplitude": 0.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 0.0, "return_to_neutral": True,
             }),
             ("[R3] ENABLE after reset", {
                 "command_type": "enable", "gesture_name": "",
-                "amplitude": 0.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 0.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 0.0, "return_to_neutral": True,
             }),
             ("[R4] GESTURE after reset", {
                 "command_type": "gesture", "gesture_name": "hand_open",
-                "amplitude": 1.0, "joint_names": empty_joint_names,
-                "joint_targets": empty_joint_targets,
+                "amplitude": 1.0, "joint_names": _empty_names(),
+                "joint_targets": _empty_targets(),
                 "hold_time_sec": 1.0, "return_to_neutral": True,
             }),
         ]
@@ -391,9 +413,12 @@ class TestServiceClient(Node):
         req.hold_time_sec = float(req_dict["hold_time_sec"])
         req.return_to_neutral = bool(req_dict["return_to_neutral"])
 
-        # 填充动态数组
-        joint_names = req_dict["joint_names"]
-        joint_targets = req_dict["joint_targets"]
+        # 填充动态数组：支持 "joint_spec" 简写或完整的 "joint_names"+"joint_targets"
+        if "joint_spec" in req_dict:
+            joint_names, joint_targets = _make_arrays(req_dict["joint_spec"])
+        else:
+            joint_names = req_dict["joint_names"]
+            joint_targets = req_dict["joint_targets"]
         for i in range(len(joint_names)):
             req.joint_names.append(joint_names[i])
             req.joint_targets.append(float(joint_targets[i]))
