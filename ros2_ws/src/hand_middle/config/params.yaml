@@ -1,0 +1,27 @@
+# hand_middle 节点参数配置
+# 路径: ros2_ws/src/hand_middle/config/params.yaml
+#
+# 使用方式:
+#   ros2 run hand_middle hand_node --ros-args --params-file src/hand_middle/config/params.yaml
+
+hand_node:
+  ros__parameters:
+    # ── 串口配置 ────────────────────────────────────────────
+    # Linux:  /dev/ttyUSB0
+    # Windows: COM3
+    port: "/dev/ttyUSB0"
+    baudrate: 115200
+
+    # ── 启动行为 ────────────────────────────────────────────
+    # 是否在节点启动时自动连接并标定设备
+    auto_initialize: true
+
+    # ── 状态发布频率 (Hz) ──────────────────────────────────
+    # 发布 /hand_middle/status 话题的频率
+    status_publish_rate: 10.0
+
+    # ── 关节保护 ────────────────────────────────────────────
+    # 温度上限 (°C)，超出则触发 fault_code=1
+    temperature_limit: 75.0
+    # 力矩上限 (N·m)，超出则触发 fault_code=2
+    torque_limit: 2.5
