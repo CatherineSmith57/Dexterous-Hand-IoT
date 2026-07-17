@@ -47,11 +47,12 @@ _CST = timezone(timedelta(hours=8))
 
 # ── 固定关节顺序（与 HandStatus.msg 索引一致）──────────────
 JOINT_ORDER: List[str] = [
-    "thumb_mcp", "thumb_pip",
-    "index_mcp", "index_pip",
-    "middle_mcp", "middle_pip",
-    "ring_mcp", "ring_pip",
-    "pinky_mcp", "pinky_pip",
+    "wrist",
+    "thumb_cmc", "thumb_abd", "thumb_mcp", "thumb_dip",
+    "index_abd", "index_mcp", "index_pip",
+    "middle_abd", "middle_mcp", "middle_pip",
+    "ring_abd", "ring_mcp", "ring_pip",
+    "pinky_abd", "pinky_mcp", "pinky_pip",
 ]
 
 # ── 手势映射表 ─────────────────────────────────────────────
@@ -84,38 +85,53 @@ HAND_CLOSE_TARGETS: Dict[str, float] = {
 
 # ── 更多手势目标值（deg）───────────────────────────────
 PINCH_GRASP_TARGETS: Dict[str, float] = {
-    "thumb_mcp": 45.0, "thumb_pip": 70.0,
-    "index_mcp": 60.0, "index_pip": 90.0,
-    "middle_mcp": 0.0, "middle_pip": 0.0,
-    "ring_mcp": 0.0, "ring_pip": 0.0,
-    "pinky_mcp": 0.0, "pinky_pip": 0.0,
+    "wrist": -8.0,
+    "thumb_cmc": 0.0, "thumb_abd": 50.0, "thumb_mcp": 60.0, "thumb_dip": 70.0,
+    "index_abd": 0.0, "index_mcp": 60.0, "index_pip": 90.0,
+    "middle_abd": 0.0, "middle_mcp": 2.0, "middle_pip": 4.0,
+    "ring_abd": 0.0, "ring_mcp": -2.0, "ring_pip": 8.0,
+    "pinky_abd": 0.0, "pinky_mcp": -4.0, "pinky_pip": -2.0,
 }
 
 TWO_FINGER_POSE_TARGETS: Dict[str, float] = {
-    "thumb_mcp": 0.0, "thumb_pip": 0.0,
-    "index_mcp": 60.0, "index_pip": 90.0,
-    "middle_mcp": 60.0, "middle_pip": 90.0,
-    "ring_mcp": 0.0, "ring_pip": 0.0,
-    "pinky_mcp": 0.0, "pinky_pip": 0.0,
+    "wrist": -8.0,
+    "thumb_cmc": 0.0, "thumb_abd": 50.0, "thumb_mcp": 33.0, "thumb_dip": 18.0,
+    "index_abd": 0.0, "index_mcp": 60.0, "index_pip": 90.0,
+    "middle_abd": 0.0, "middle_mcp": 60.0, "middle_pip": 90.0,
+    "ring_abd": 0.0, "ring_mcp": -2.0, "ring_pip": 8.0,
+    "pinky_abd": 0.0, "pinky_mcp": -4.0, "pinky_pip": -2.0,
 }
 
 POINT_POSE_TARGETS: Dict[str, float] = {
-    "thumb_mcp": 0.0, "thumb_pip": 0.0,
-    "index_mcp": 45.0, "index_pip": 90.0,
-    "middle_mcp": 0.0, "middle_pip": 0.0,
-    "ring_mcp": 0.0, "ring_pip": 0.0,
-    "pinky_mcp": 0.0, "pinky_pip": 0.0,
+    "wrist": -8.0,
+    "thumb_cmc": 0.0, "thumb_abd": 50.0, "thumb_mcp": 33.0, "thumb_dip": 18.0,
+    "index_abd": 0.0, "index_mcp": 45.0, "index_pip": 90.0,
+    "middle_abd": 0.0, "middle_mcp": 2.0, "middle_pip": 4.0,
+    "ring_abd": 0.0, "ring_mcp": -2.0, "ring_pip": 8.0,
+    "pinky_abd": 0.0, "pinky_mcp": -4.0, "pinky_pip": -2.0,
 }
 
 # ── 内部常量（原由 orca_core.orca_hand 提供，现本地维护）────
 _VALID_JOINTS = set(JOINT_ORDER)
 
 JOINT_ROMS: Dict[str, tuple] = {
-    "thumb_mcp": (0.0, 90.0), "thumb_pip": (0.0, 90.0),
-    "index_mcp": (0.0, 90.0), "index_pip": (0.0, 90.0),
-    "middle_mcp": (0.0, 90.0), "middle_pip": (0.0, 90.0),
-    "ring_mcp": (0.0, 90.0), "ring_pip": (0.0, 90.0),
-    "pinky_mcp": (0.0, 90.0), "pinky_pip": (0.0, 90.0),
+    "wrist":      (-65.0, 35.0),
+    "thumb_cmc":  (-45.0, 33.0),
+    "thumb_abd":  (-18.0, 55.0),
+    "thumb_mcp":  (-60.0, 90.0),
+    "thumb_dip":  (-55.0, 107.0),
+    "index_abd":  (-30.0, 25.0),
+    "index_mcp":  (-60.0, 100.0),
+    "index_pip":  (-15.0, 107.0),
+    "middle_abd": (-27.0, 27.0),
+    "middle_mcp": (-60.0, 100.0),
+    "middle_pip": (-15.0, 107.0),
+    "ring_abd":   (-27.0, 27.0),
+    "ring_mcp":   (-60.0, 100.0),
+    "ring_pip":   (-15.0, 107.0),
+    "pinky_abd":  (-30.0, 30.0),
+    "pinky_mcp":  (-60.0, 100.0),
+    "pinky_pip":  (-15.0, 107.0),
 }
 
 _GESTURE_TARGETS: Dict[str, Dict[str, float]] = {
