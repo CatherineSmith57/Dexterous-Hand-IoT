@@ -1,0 +1,13 @@
+string command_type
+string gesture_name
+float32 amplitude
+string[] joint_names
+float32[] joint_targets
+float32 hold_time_sec
+bool return_to_neutral
+---
+bool success
+string execution_status
+int32 error_code
+string error_message
+string timestamp
