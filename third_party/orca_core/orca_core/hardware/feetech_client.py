@@ -143,7 +143,7 @@ class FeetechClient(MotorClient):
             self.packet_handler.write1ByteTxRx(motor_id, SMS_STS_MODE, 0)
 
         # Enable torque for all motors
-        self.set_torque_enabled(self.motor_ids, True)
+        # self.set_torque_enabled(self.motor_ids, True)
 
     def disconnect(self) -> None:
         """Disconnects from the Feetech motors."""
@@ -155,7 +155,7 @@ class FeetechClient(MotorClient):
             return
 
         # Disable torque before disconnecting
-        self.set_torque_enabled(self.motor_ids, False, retries=0)
+        # self.set_torque_enabled(self.motor_ids, False, retries=0)
 
         self.port_handler.closePort()
         self._connected = False
@@ -180,7 +180,7 @@ class FeetechClient(MotorClient):
                 result, error = self.packet_handler.write1ByteTxRx(
                     motor_id, SMS_STS_TORQUE_ENABLE, int(enabled)
                 )
-                if result != COMM_SUCCESS or error != 0:
+                if result != COMM_SUCCESS:
                     failed_ids.append(motor_id)
 
             remaining_ids = failed_ids
@@ -224,7 +224,7 @@ class FeetechClient(MotorClient):
             )
 
         # Disable torque to change mode
-        self.set_torque_enabled(motor_ids, False)
+        # self.set_torque_enabled(motor_ids, False)
 
         for motor_id in motor_ids:
             # Only velocity mode (1) maps to wheel mode; all others use servo mode
@@ -233,14 +233,15 @@ class FeetechClient(MotorClient):
             result, error = self.packet_handler.write1ByteTxRx(
                 motor_id, SMS_STS_MODE, feetech_mode
             )
-            if result != COMM_SUCCESS or error != 0:
+            if result != COMM_SUCCESS or error != 0 and error != 1:
                 logging.error(
                     'Failed to set operating mode for motor %d: result=%d, error=%d',
                     motor_id, result, error
                 )
 
         # Re-enable torque
-        self.set_torque_enabled(motor_ids, True)
+        # self.set_torque_enabled(motor_ids, True)
+
 
     def read_pos_vel_cur(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Reads position, velocity, and current for all motors."""
@@ -353,7 +354,7 @@ class FeetechClient(MotorClient):
                 self._default_acc,
                 torque,
             )
-            if result != COMM_SUCCESS or error != 0:
+            if result != COMM_SUCCESS or error != 0 and error != 1:
                 logging.error(
                     'Failed to write position to motor %d: result=%d, error=%d',
                     motor_id, result, error
@@ -433,7 +434,7 @@ class FeetechClient(MotorClient):
         target_position = 3595 if upper else 500
 
         result, error = self.packet_handler.reOfsCal(motor_id, target_position)
-        if result != COMM_SUCCESS or error != 0:
+        if result != COMM_SUCCESS or error != 0 and error != 1:
             logging.error(
                 'Failed to calibrate offset for motor %d: result=%d, error=%d',
                 motor_id, result, error

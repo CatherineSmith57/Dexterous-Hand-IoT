@@ -128,6 +128,8 @@ def manual_safety_check(hand):
     return response.lower() in ['yes', 'y', '是']
 
 def main() -> int:
+    global SAFE_CALIBRATION_CURRENT, SAFE_CALIBRATION_STEP_SIZE
+
     parser = argparse.ArgumentParser(
         description="运行安全的ORCA机械手校准程序"
     )
