@@ -1,4 +1,7 @@
+<<<<<<< Updated upstream
 # port: /dev/ttyACM0
+=======
+>>>>>>> Stashed changes
 port: COM5
 version: 0.2.1
 baudrate: 1000000
