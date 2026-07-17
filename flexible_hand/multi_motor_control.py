@@ -17,7 +17,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, Mapping, Optional, Tuple
 
-from motor_control import (
+from .motor_control import (
     COMM_SUCCESS,
     DEFAULT_ACC,
     DEFAULT_SPEED,
@@ -30,7 +30,10 @@ from motor_control import (
 )
 
 # motor_control 导入后，Feetech SDK 路径已经加入 sys.path。
-from feetech import SMS_STS_PRESENT_CURRENT_L  # type: ignore  # noqa: E402
+from feetech import (
+    SMS_STS_PRESENT_CURRENT_L,
+    SMS_STS_PRESENT_TEMPERATURE,
+)  # type: ignore  # noqa: E402
 
 
 logger = logging.getLogger("multi_motor_control")
@@ -293,6 +296,37 @@ class MultiMotorControl(MotorControl):
                     failures[motor_id] = message
 
         return currents, failures
+
+
+    def read_temperatures(
+        self,
+        motor_ids: Iterable[int] = range(1, 18),
+    ) -> Tuple[Dict[int, int], Dict[int, str]]:
+        """读取多个电机温度，单位 °C。"""
+        self._check()
+        assert self._pk is not None
+
+        temperatures: Dict[int, int] = {}
+        failures: Dict[int, str] = {}
+
+        with self._bus_lock:
+            for motor_id in sorted(set(int(mid) for mid in motor_ids)):
+                raw, result, error = self._pk.read1ByteTxRx(
+                    motor_id,
+                    SMS_STS_PRESENT_TEMPERATURE,
+                )
+                ok, message = self._check_response(
+                    motor_id,
+                    result,
+                    error,
+                    "read_temperature",
+                )
+                if ok:
+                    temperatures[motor_id] = int(raw)
+                else:
+                    failures[motor_id] = message
+
+        return temperatures, failures
 
     def wait_until_reached(
         self,

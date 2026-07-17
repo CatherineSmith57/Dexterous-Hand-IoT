@@ -282,11 +282,26 @@ class JointMapper:
         flex_pinky = float(np.clip(raw_pinky / abd_range, -1.0, 1.0))
 
         return {
-            "index_abd": self._map_to_rom("index_abd", flex_index),
+            "index_abd": self._map_signed_to_rom("index_abd", flex_index),
             "middle_abd": 0.0,  # 参考手指，不偏移
-            "ring_abd": self._map_to_rom("ring_abd", flex_ring),
-            "pinky_abd": self._map_to_rom("pinky_abd", flex_pinky),
+            "ring_abd": self._map_signed_to_rom("ring_abd", flex_ring),
+            "pinky_abd": self._map_signed_to_rom("pinky_abd", flex_pinky),
         }
+
+    def _map_signed_to_rom(
+        self,
+        joint_name: str,
+        signed_value: float,
+    ) -> float:
+        """将 [-1, 1] 的外展方向映射到 [负ROM, 正ROM]。
+
+        -1 对应负方向最大外展，0 对应中立，1 对应正方向最大外展。
+        """
+        lo, hi = self.rom.get(joint_name, (-30.0, 30.0))
+        value = float(np.clip(signed_value, -1.0, 1.0))
+        if value < 0:
+            return (-value) * lo
+        return value * hi
 
     def _map_to_rom(self, joint_name: str, flexion: float) -> float:
         """将弯曲程度 [0,1] 映射到关节 ROM 范围内的角度。
