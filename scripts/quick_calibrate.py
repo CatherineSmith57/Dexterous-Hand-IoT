@@ -31,7 +31,7 @@ def main():
         / "models"
         / "v2"
         / "orcahand_right"
-        / "config_safe.yaml"
+        / "config.yaml"
     )
 
     print("=" * 60)

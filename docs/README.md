@@ -4,10 +4,10 @@
 
 当前已经整理进来的文档：
 
-1. [ORCA_CORE项目说明书.md](/D:/IoT/team_project/docs/ORCA_CORE项目说明书.md)
-2. [CONFIG_YAML说明书.md](/D:/IoT/team_project/docs/CONFIG_YAML说明书.md)
-3. [学习顺序图_三人分工_前两周计划.md](/D:/IoT/team_project/docs/学习顺序图_三人分工_前两周计划.md)
-4. [三人分层分工表_本周任务_接口约定.md](/D:/IoT/team_project/docs/三人分层分工表_本周任务_接口约定.md)
+1. [orca_core_project_overview.md](/D:/IoT/team_project/docs/orca_core_project_overview.md)
+2. [config_yaml_guide.md](/D:/IoT/team_project/docs/config_yaml_guide.md)
+3. [learning_path_team_roles_first_two_weeks.md](/D:/IoT/team_project/docs/learning_path_team_roles_first_two_weeks.md)
+4. [team_roles_week1_and_interface_contract.md](/D:/IoT/team_project/docs/team_roles_week1_and_interface_contract.md)
 
 建议阅读顺序：
 

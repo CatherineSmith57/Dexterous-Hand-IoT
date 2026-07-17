@@ -25,4 +25,14 @@ Thumbs.db
 *.tmp
 *.bak
 
+# AI sync files (local only, not for remote)
+ai_sync/
+
+# Teammate personal docs (gitignored per team convention)
+docs/config_yaml_guide.md
+docs/fingers.md
+docs/learning_path_team_roles_first_two_weeks.md
+docs/orca_core_project_overview.md
+docs/team_roles_week1_and_interface_contract.md
 docs/zoe_guide.md
+interfaces/hand_interface.md

@@ -167,7 +167,7 @@ class FeetechClient(MotorClient):
         self,
         motor_ids: Sequence[int],
         enabled: bool,
-        retries: int = -1,
+        retries: int = 5,
         retry_interval: float = 0.25,
     ) -> None:
         """Sets whether torque is enabled for the motors."""

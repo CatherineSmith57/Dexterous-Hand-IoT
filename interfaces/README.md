@@ -4,7 +4,7 @@
 
 当前已经整理进来的文档：
 
-1. [接口协议.md](/D:/IoT/team_project/interfaces/接口协议.md)
+1. [interface_spec.md](/D:/IoT/team_project/interfaces/interface_spec.md)
 
 当前协议覆盖：
 

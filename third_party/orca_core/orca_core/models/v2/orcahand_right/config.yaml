@@ -1,11 +1,10 @@
-<<<<<<< Updated upstream
-# port: /dev/ttyACM0
-=======
->>>>>>> Stashed changes
+# 安全配置文件 - 降低校准力度，防止损坏机械手
+# port: "/dev/ttyACM0"
 port: COM5
 version: 0.2.1
 baudrate: 1000000
-motor_type: waveshare
+# motor_type: "waveshare"
+motor_type: "feetech"   # 原来是 "waveshare"
 max_current: 300
 type: right
 control_mode: position
@@ -63,14 +62,18 @@ joint_to_motor_map:
   pinky_mcp: 12
   pinky_pip: 11
   wrist: 1
+
 reverse_joints:
-- ring_mcp
-- pinky_abd
-- pinky_pip
-- wrist
+  - ring_mcp
+  - pinky_abd
+  - pinky_pip
+  - wrist
+
 unit_conversion:
-  position: degree
+  position: "degree"
   position_scale: 57.2958
+
+
 joint_roms:
   wrist:
   - -65
@@ -141,11 +144,16 @@ neutral_position:
   pinky_mcp: -4
   pinky_pip: -2
   wrist: -8
-calibration_current: 300
-calibration_step_size: 0.15
-calibration_step_period: 0.0001
-calibration_num_stable: 10
-calibration_threshold: 0.01
+
+# ============ 安全校准参数 ============
+# 这些参数显著降低了校准力度，防止损坏机械手
+calibration_current: 150  # 从300降低到150 mA - 减少50%力度
+wrist_calibration_current: 200  # 手腕校准电流也降低
+calibration_step_size: 0.05  # 从0.15降低到0.05 rad - 更精细的控制
+calibration_step_period: 0.001  # 步间间隔
+calibration_num_stable: 15  # 增加稳定检测次数
+calibration_threshold: 0.005  # 更严格的稳定阈值
+
 calibration_sequence:
 - step: 1
   joints:
