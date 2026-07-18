@@ -38,6 +38,9 @@ HARDWARE_DIR = (
 if str(HARDWARE_DIR) not in sys.path:
     sys.path.insert(0, str(HARDWARE_DIR))
 
+MOTOR_ID_MIN = 1
+MOTOR_ID_MAX = 17
+
 from feetech import (
     PortHandler,
     sms_sts,

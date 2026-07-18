@@ -243,6 +243,17 @@ class MultiMotorControl(MotorControl):
             used_sync_write=False,
         )
 
+    def _check_response(
+        self, motor_id: int, result: int, error: int, operation: str
+    ) -> Tuple[bool, str]:
+        """检查电机通信响应。"""
+        from feetech import COMM_SUCCESS
+        if result != COMM_SUCCESS:
+            return False, f"{operation}[{motor_id}] comm fail (result={result})"
+        if error != 0:
+            return False, f"{operation}[{motor_id}] error={error}"
+        return True, "ok"
+
     def read_positions(
         self,
         motor_ids: Iterable[int] = range(1, 18),
