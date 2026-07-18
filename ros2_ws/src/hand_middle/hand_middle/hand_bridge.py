@@ -184,6 +184,9 @@ class HandBridge:
         self._hand: Optional[OrcaHand] = None
         self._initialized = False
         self._motor_enabled = False  # 电机使能状态
+        self._connected = False
+        self._calibrated = False
+        self._last_error: Dict = {}
 
         # ── 模拟温度/力矩数据（接入真实硬件后替换为编码器/电流读取）──
         # 每个关节的"基线"温度与力矩，叠加小幅随机波动模拟真实传感器
@@ -268,7 +271,7 @@ class HandBridge:
         if self._hand is None:
             return False
         return (
-            self._hand.connected
+            self._hand.is_connected()
             and self._hand.calibrated
             and self._motor_enabled
         )
@@ -277,7 +280,7 @@ class HandBridge:
         """
         获取设备完整状态（扩展版）。
 
-        除 orca_core 原有字段外，额外返回温度、力矩、故障标记。
+        通过 orca_core 真实 API 读取连接/标定/关节位置。
         温度/力矩当前使用模拟值，接入真实硬件后替换读取逻辑。
 
         Returns
@@ -308,7 +311,11 @@ class HandBridge:
 
         # ── 从orca_core读取真实状态 ──────────────────────────
         try:
-            core_status = self._hand.get_status()
+            connected = self._hand.is_connected()
+            calibrated = self._hand.calibrated
+            # 读取关节位置（OrcaJointPositions → dict）
+            jp = self._hand.get_joint_position()
+            joint_pos_dict = jp.as_dict() if jp is not None else {}
         except Exception as e:
             logger.error(f"Failed to read device status from orca_core: {e}")
             # 读取失败时返回上一次已知状态并标记故障
@@ -320,7 +327,7 @@ class HandBridge:
         # ── 组装扩展状态字典 ─────────────────────────────────
         joint_names = list(JOINT_ORDER)
         joint_positions = [
-            core_status.joint_positions.get(j, 0.0) for j in JOINT_ORDER
+            joint_pos_dict.get(j, 0.0) for j in JOINT_ORDER
         ]
         joint_temperatures = [
             round(self._sim_temperatures.get(j, 0.0), 1) for j in JOINT_ORDER
@@ -331,14 +338,15 @@ class HandBridge:
 
         # ── 故障检测 ─────────────────────────────────────────
         fault_code, fault_message = self._detect_fault(
-            core_status=core_status,
+            connected=connected,
+            calibrated=calibrated,
             temperatures=joint_temperatures,
             torques=joint_torques,
         )
 
         return {
-            "connected": core_status.connected,
-            "calibrated": core_status.calibrated,
+            "connected": connected,
+            "calibrated": calibrated,
             "motor_enabled": self._motor_enabled,
             "joint_names": joint_names,
             "joint_positions": joint_positions,
@@ -346,14 +354,14 @@ class HandBridge:
             "joint_torques": joint_torques,
             "fault_code": fault_code,
             "fault_message": fault_message,
-            "current_action": core_status.current_action,
-            "execution_status": core_status.execution_status,
+            "current_action": self._current_action if hasattr(self, '_current_action') else "idle",
+            "execution_status": self._execution_status if hasattr(self, '_execution_status') else "idle",
         }
 
     def _build_fallback_status(self, error_reason: str) -> Dict:
         """构建读取出错时的降级状态字典。"""
         return {
-            "connected": self._hand.connected if self._hand else False,
+            "connected": self._hand.is_connected() if self._hand else False,
             "calibrated": self._hand.calibrated if self._hand else False,
             "motor_enabled": self._motor_enabled,
             "joint_names": list(JOINT_ORDER),
@@ -388,7 +396,8 @@ class HandBridge:
 
     def _detect_fault(
         self,
-        core_status,
+        connected: bool,
+        calibrated: bool,
         temperatures: List[float],
         torques: List[float],
     ) -> Tuple[int, str]:
@@ -400,7 +409,6 @@ class HandBridge:
         2. 设备未标定 → 1002
         3. 任一关节过温 → 1
         4. 任一关节过力矩 → 2
-        5. 执行失败 → 根据 execution_status 判断
 
         Returns
         -------
@@ -408,9 +416,9 @@ class HandBridge:
             fault_code=0 表示正常
         """
         # 连接性检查
-        if not core_status.connected:
+        if not connected:
             return (1001, "Device not connected — check serial cable")
-        if not core_status.calibrated:
+        if not calibrated:
             return (1002, "Device not calibrated — run calibration first")
         if not self._motor_enabled:
             return (1008, "Motor disabled — send 'enable' command first")
@@ -434,12 +442,6 @@ class HandBridge:
                 )
                 logger.warning(f"[FAULT] {msg}")
                 return (2, msg)
-
-        # 执行状态检查
-        if core_status.execution_status == "failed":
-            return (1006, "Last action execution failed")
-        if core_status.execution_status == "aborted":
-            return (1008, "Last action was aborted (emergency stop)")
 
         return (0, "")
 
@@ -560,7 +562,7 @@ class HandBridge:
                 error_code=1001,
                 error_message="Device not initialized — call initialize() first",
             )
-        if not self._hand.connected:
+        if not self._hand.is_connected():
             logger.error("Joint control failed: not connected")
             return self._make_result(
                 success=False,
@@ -640,11 +642,21 @@ class HandBridge:
         # ── 调用orca_core底层执行 ─────────────────────────────
         try:
             logger.info(f"Executing joint control: {joint_dict}")
-            self._hand.execute_joint_targets(
-                joint_targets=joint_dict,
-                hold_time_sec=hold_time_sec,
-                return_to_neutral=return_to_neutral,
+            # orca_core 真实 API: set_joint_positions + 手动 hold/neutral
+            self._hand.set_joint_positions(
+                joint_dict,
+                num_steps=25,
+                step_size=0.01,
             )
+
+            # 保持时间
+            if hold_time_sec > 0:
+                time.sleep(hold_time_sec)
+
+            # 回中位
+            if return_to_neutral:
+                self._hand.set_neutral_position()
+
             logger.info("Joint control completed successfully")
             return self._make_result(
                 success=True,
@@ -652,61 +664,47 @@ class HandBridge:
             )
 
         except ValueError as e:
-            logger.error(f"Joint ROM error (code=unknown): {e}")
+            logger.error(f"Invalid joint parameter: {e}")
             return self._make_result(
                 success=False,
                 execution_status="failed",
-                error_code=1001,
-                error_message=str(e),
-            )
-        except ValueError as e:
-            logger.error(f"Invalid joint error (code=unknown): {e}")
-            return self._make_result(
-                success=False,
-                execution_status="failed",
-                error_code=1001,
-                error_message=str(e),
-            )
-        except TimeoutError as e:
-            logger.error(f"Timeout error (code=unknown): {e}")
-            return self._make_result(
-                success=False,
-                execution_status="failed",
-                error_code=1001,
+                error_code=1004,
                 error_message=str(e),
             )
         except IOError as e:
-            logger.error(f"Serial error (code=unknown): {e}")
+            logger.error(f"Serial communication error: {e}")
             return self._make_result(
                 success=False,
                 execution_status="failed",
-                error_code=1001,
+                error_code=1007,
                 error_message=f"Serial communication error: {e}",
             )
         except RuntimeError as e:
-            logger.error(f"Not connected (code=unknown): {e}")
-            return self._make_result(
-                success=False,
-                execution_status="failed",
-                error_code=1001,
-                error_message=str(e),
-            )
-        except RuntimeError as e:
-            logger.error(f"Not calibrated (code=unknown): {e}")
-            return self._make_result(
-                success=False,
-                execution_status="failed",
-                error_code=1001,
-                error_message=str(e),
-            )
-        except RuntimeError as e:
-            logger.error(f"Safety error (code=unknown): {e}")
-            return self._make_result(
-                success=False,
-                execution_status="aborted",
-                error_code=1001,
-                error_message=str(e),
-            )
+            msg = str(e).lower()
+            if "not connected" in msg:
+                logger.error(f"Device not connected: {e}")
+                return self._make_result(
+                    success=False,
+                    execution_status="failed",
+                    error_code=1001,
+                    error_message=str(e),
+                )
+            elif "not calibrated" in msg:
+                logger.error(f"Device not calibrated: {e}")
+                return self._make_result(
+                    success=False,
+                    execution_status="failed",
+                    error_code=1002,
+                    error_message=str(e),
+                )
+            else:
+                logger.error(f"Runtime error during joint control: {e}")
+                return self._make_result(
+                    success=False,
+                    execution_status="failed",
+                    error_code=1001,
+                    error_message=str(e),
+                )
         except Exception as e:
             logger.exception(f"Unexpected error during joint control: {e}")
             return self._make_result(
@@ -794,12 +792,20 @@ class HandBridge:
                 f"interpolated angles: {{{_sample}}}..."
             )
 
-            # 通过关节控制接口执行插值后的目标
-            self._hand.execute_joint_targets(
-                joint_targets=interpolated,
-                hold_time_sec=hold_time_sec,
-                return_to_neutral=return_to_neutral,
+            # 通过 orca_core 真实 API 执行插值后的目标
+            self._hand.set_joint_positions(
+                interpolated,
+                num_steps=25,
+                step_size=0.01,
             )
+
+            # 保持时间
+            if hold_time_sec > 0:
+                time.sleep(hold_time_sec)
+
+            # 回中位
+            if return_to_neutral:
+                self._hand.set_neutral_position()
 
             logger.info(
                 f"Gesture '{gesture_name}' (amplitude={amplitude:.2f}) completed"
@@ -807,28 +813,36 @@ class HandBridge:
             return self._make_result(success=True, execution_status="completed")
 
         except ValueError as e:
-            logger.error(f"Invalid gesture (code=unknown): {e}")
+            logger.error(f"Invalid gesture parameter: {e}")
             return self._make_result(
                 success=False, execution_status="failed",
-                error_code=1001, error_message=str(e),
+                error_code=1004, error_message=str(e),
             )
         except RuntimeError as e:
-            logger.error(f"Not connected (code=unknown): {e}")
-            return self._make_result(
-                success=False, execution_status="failed",
-                error_code=1001, error_message=str(e),
-            )
-        except RuntimeError as e:
-            logger.error(f"Not calibrated (code=unknown): {e}")
-            return self._make_result(
-                success=False, execution_status="failed",
-                error_code=1001, error_message=str(e),
-            )
+            msg = str(e).lower()
+            if "not connected" in msg:
+                logger.error(f"Device not connected: {e}")
+                return self._make_result(
+                    success=False, execution_status="failed",
+                    error_code=1001, error_message=str(e),
+                )
+            elif "not calibrated" in msg:
+                logger.error(f"Device not calibrated: {e}")
+                return self._make_result(
+                    success=False, execution_status="failed",
+                    error_code=1002, error_message=str(e),
+                )
+            else:
+                logger.error(f"Runtime error during gesture: {e}")
+                return self._make_result(
+                    success=False, execution_status="failed",
+                    error_code=1001, error_message=str(e),
+                )
         except IOError as e:
-            logger.error(f"Serial error (code=unknown): {e}")
+            logger.error(f"Serial communication error: {e}")
             return self._make_result(
                 success=False, execution_status="failed",
-                error_code=1001, error_message=f"Serial error: {e}",
+                error_code=1007, error_message=f"Serial error: {e}",
             )
         except Exception as e:
             logger.exception(f"Unexpected error during gesture execution: {e}")
@@ -889,17 +903,11 @@ class HandBridge:
             return self._make_result(success=True, execution_status="completed")
 
         except IOError as e:
-            logger.error(f"Reset failed: serial error (code=unknown): {e}")
+            logger.error(f"Reset failed: serial error: {e}")
             return self._make_result(
                 success=False, execution_status="failed",
-                error_code=1001,
+                error_code=1007,
                 error_message=f"Serial error during reset: {e}",
-            )
-        except Exception as e:
-            logger.error(f"Reset failed: ORCA error (code=unknown): {e}")
-            return self._make_result(
-                success=False, execution_status="failed",
-                error_code=1001, error_message=str(e),
             )
         except Exception as e:
             logger.exception(f"Reset failed: unexpected error: {e}")
@@ -923,7 +931,7 @@ class HandBridge:
                 success=False, execution_status="failed",
                 error_code=1001, error_message="Device not initialized",
             )
-        if not self._hand.connected:
+        if not self._hand.is_connected():
             return self._make_result(
                 success=False, execution_status="failed",
                 error_code=1001, error_message="Device not connected",
@@ -996,7 +1004,7 @@ class HandBridge:
         error_message: str = "",
     ) -> Dict:
         """构建标准 execution_result 字典。"""
-        connected = self._hand.connected if self._hand else False
+        connected = self._hand.is_connected() if self._hand else False
         calibrated = self._hand.calibrated if self._hand else False
         return {
             "success": success,
