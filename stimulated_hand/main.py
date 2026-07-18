@@ -1,18 +1,20 @@
 r"""
 main.py — 手部视觉追踪 + 17 关节实时机械手控制
 
-保留旧版的全部界面和按键功能：
-    q / ESC — 退出
-    e       — 连接机械手或暂停/恢复实时控制
-    s       — 打印机械手状态与当前关节角
-    t       — 切换简洁/详细显示
+按键：
+    q / ESC     退出
+    e           暂停/恢复实时跟随；暂停时保持最后目标
+    p / Space   Snapshot：截取当前视觉姿态，只下发一次并固定
+    d           打印角度 → Motor ID → target raw → actual raw
+    x           急停并关闭全部电机扭矩
+    s           打印机械手状态和当前关节角
+    t           切换简洁/详细显示
+    [ / ]       运行中降低/提高 speed
 
-仅视觉：
-    python -m stimulated_hand.main
-
-视觉 + 机械手：
+示例：
     python -m stimulated_hand.main --robot \
-        --calibration .\flexible_hand\hardware\calibration.yaml
+        --calibration .\flexible_hand\hardware\calibration.yaml \
+        --speed 40 --ema-alpha 0.45
 """
 
 from __future__ import annotations
@@ -34,10 +36,6 @@ from stimulated_hand.hand_tracker import HandTracker
 from stimulated_hand.joint_mapper import JointMapper
 
 
-# ============================================================
-# 显示模块：保留旧版状态面板、按键提示和底部状态栏
-# ============================================================
-
 def render_frame(
     frame: np.ndarray,
     hands: list[dict] | None,
@@ -47,7 +45,7 @@ def render_frame(
     display = frame.copy()
     h, w = display.shape[:2]
 
-    panel_w = 280
+    panel_w = 300
     panel_x = max(0, w - panel_w)
 
     overlay = display.copy()
@@ -68,7 +66,6 @@ def render_frame(
     )
 
     y = 20
-
     cv2.putText(
         display,
         "STIMULATED HAND",
@@ -88,12 +85,22 @@ def render_frame(
     )
     y += 10
 
-    connected = bool(status.get("robot_connected", False))
-    robot_color = (0, 255, 0) if connected else (0, 0, 255)
-    robot_text = "CONNECTED" if connected else "OFFLINE"
+    connected = bool(
+        status.get("robot_connected", False)
+    )
+    robot_color = (
+        (0, 255, 0)
+        if connected
+        else (0, 0, 255)
+    )
+    robot_text = (
+        "CONNECTED"
+        if connected
+        else "OFFLINE"
+    )
     cv2.putText(
         display,
-        f"Robot:  {robot_text}",
+        f"Robot: {robot_text}",
         (panel_x + 15, y + 15),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.5,
@@ -102,15 +109,32 @@ def render_frame(
     )
     y += 28
 
-    enabled = bool(status.get("robot_enabled", False))
-    mode_color = (0, 255, 255) if enabled else (150, 150, 150)
-    mode_text = "CONTROLLING" if enabled else "TRACKING ONLY"
+    enabled = bool(
+        status.get("robot_enabled", False)
+    )
+    snapshot_hold = bool(
+        status.get("snapshot_hold", False)
+    )
+
+    if snapshot_hold:
+        mode_text = "SNAPSHOT HOLD"
+        mode_color = (255, 200, 0)
+    elif enabled:
+        mode_text = "CONTROLLING"
+        mode_color = (0, 255, 255)
+    elif connected:
+        mode_text = "PAUSED / HOLD"
+        mode_color = (180, 180, 180)
+    else:
+        mode_text = "TRACKING ONLY"
+        mode_color = (150, 150, 150)
+
     cv2.putText(
         display,
-        f"Mode:   {mode_text}",
+        f"Mode:  {mode_text}",
         (panel_x + 15, y + 15),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.5,
+        0.48,
         mode_color,
         1,
     )
@@ -118,14 +142,29 @@ def render_frame(
 
     cv2.putText(
         display,
-        f"FPS:    {status.get('fps', 0.0):.1f}",
+        f"FPS:   {status.get('fps', 0.0):.1f}",
         (panel_x + 15, y + 15),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.5,
         (0, 255, 255),
         1,
     )
-    y += 30
+    y += 23
+
+    cv2.putText(
+        display,
+        (
+            f"Speed:{status.get('speed', 0)}  "
+            f"EMA:{status.get('ema_alpha', 0.0):.2f}"
+        ),
+        (panel_x + 15, y + 15),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.42,
+        (200, 200, 120),
+        1,
+    )
+    y += 27
+
     cv2.line(
         display,
         (panel_x + 10, y),
@@ -140,11 +179,11 @@ def render_frame(
         "JOINT ANGLES (deg):",
         (panel_x + 15, y + 15),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.45,
+        0.43,
         (180, 180, 180),
         1,
     )
-    y += 25
+    y += 24
 
     if joint_angles:
         show_joints = [
@@ -166,19 +205,23 @@ def render_frame(
                 for name in sorted(joint_angles)
             ]
 
-        # 详细模式时 17 行可能超过窗口高度，给按键区预留空间。
-        max_joint_y = max(245, h - 155)
+        max_joint_y = max(245, h - 205)
         for full_name, short_name in show_joints:
             if y + 18 > max_joint_y:
                 break
 
-            angle = float(joint_angles.get(full_name, 0.0))
+            angle = float(
+                joint_angles.get(
+                    full_name,
+                    0.0,
+                )
+            )
             cv2.putText(
                 display,
                 f"  {short_name:10s} {angle:6.1f}",
                 (panel_x + 15, y + 15),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.38,
+                0.37,
                 (255, 255, 255),
                 1,
             )
@@ -193,10 +236,8 @@ def render_frame(
             (100, 100, 100),
             1,
         )
-        y += 18
 
-    # 按键提示固定在面板底部，防止详细关节列表将其挤出窗口。
-    controls_y = max(y + 15, h - 135)
+    controls_y = max(y + 15, h - 190)
     cv2.line(
         display,
         (panel_x + 10, controls_y),
@@ -204,38 +245,41 @@ def render_frame(
         (80, 80, 80),
         1,
     )
-    controls_y += 10
+    controls_y += 8
 
     cv2.putText(
         display,
         "CONTROLS:",
-        (panel_x + 15, controls_y + 15),
+        (panel_x + 15, controls_y + 14),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.4,
+        0.38,
         (150, 150, 150),
         1,
     )
-    controls_y += 22
+    controls_y += 20
 
     controls = [
-        ("q/ESC", "Quit"),
-        ("e", "Connect / Toggle"),
-        ("s", "Print Status"),
-        ("t", "Detail"),
+        ("q", "Quit"),
+        ("e", "Live / Pause"),
+        ("p", "Snapshot Hold"),
+        ("d", "Mapping Debug"),
+        ("x", "Emergency Stop"),
+        ("[ ]", "Speed - / +"),
+        ("s/t", "Status / Detail"),
     ]
     for key, description in controls:
-        if controls_y + 15 >= h - 8:
+        if controls_y + 14 >= h - 8:
             break
         cv2.putText(
             display,
-            f"  [{key}]  {description}",
-            (panel_x + 15, controls_y + 15),
+            f" [{key:4s}] {description}",
+            (panel_x + 15, controls_y + 14),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.36,
-            (130, 130, 130),
+            0.34,
+            (135, 135, 135),
             1,
         )
-        controls_y += 19
+        controls_y += 18
 
     hand_text = (
         "Hand: DETECTED"
@@ -258,11 +302,10 @@ def render_frame(
     )
 
     robot_info = f"Robot: {robot_text}"
-    robot_x = max(10, panel_x - 200)
     cv2.putText(
         display,
         robot_info,
-        (robot_x, h - 10),
+        (max(10, panel_x - 205), h - 10),
         cv2.FONT_HERSHEY_SIMPLEX,
         0.5,
         robot_color,
@@ -272,18 +315,24 @@ def render_frame(
     return display
 
 
-# ============================================================
-# 机器人桥接：只调用 flexible_hand.hand_interface
-# ============================================================
-
 class RobotBridge:
     def __init__(
         self,
-        config_path: str | None = None,
-        calibration_path: str | None = None,
+        config_path: str | None,
+        calibration_path: str | None,
+        speed: int,
+        acc: int,
+        torque: int,
+        control_hz: float,
     ):
         self.config_path = config_path
         self.calibration_path = calibration_path
+
+        self.speed = int(speed)
+        self.acc = int(acc)
+        self.torque = int(torque)
+        self.control_hz = float(control_hz)
+
         self._connected = False
         self._last_error = ""
 
@@ -295,6 +344,12 @@ class RobotBridge:
     def connect(self) -> bool:
         try:
             api = self._api()
+            api.configure_motion(
+                speed=self.speed,
+                acc=self.acc,
+                torque=self.torque,
+                control_hz=self.control_hz,
+            )
             ok = bool(
                 api.init(
                     config_path=self.config_path,
@@ -304,9 +359,8 @@ class RobotBridge:
             self._connected = ok
 
             if ok:
-                self._last_error = ""
                 print(
-                    "[RobotBridge] 机械手连接、limits 验证、"
+                    "[RobotBridge] 连接、limits 验证、"
                     "回中和实时调度器启动成功"
                 )
             else:
@@ -335,7 +389,6 @@ class RobotBridge:
     def is_connected(self) -> bool:
         if not self._connected:
             return False
-
         try:
             connected = bool(
                 self._api()
@@ -345,8 +398,7 @@ class RobotBridge:
             if not connected:
                 self._connected = False
             return connected
-        except Exception as exc:
-            self._last_error = str(exc)
+        except Exception:
             self._connected = False
             return False
 
@@ -367,41 +419,66 @@ class RobotBridge:
             confidence=confidence,
             min_confidence=0.6,
         )
-
         if result.get("status") == "failed":
-            self._last_error = str(
-                result.get("message", "unknown error")
-            )
             print(
                 "[RobotBridge] 实时发送失败: "
                 f"{result}"
             )
-
         return result
+
+    def pause_hold(self) -> dict:
+        """清空视觉队列，但让电机保持最后目标。"""
+        if not self.is_connected():
+            return {
+                "success": False,
+                "message": "Hand not connected",
+            }
+        return self._api().pause_realtime()
+
+    def snapshot_pose(
+        self,
+        joint_angles: dict[str, float],
+    ) -> dict:
+        if not self.is_connected():
+            return {
+                "success": False,
+                "message": "Hand not connected",
+            }
+        return self._api().hold_snapshot(
+            joint_angles
+        )
+
+    def debug_mapping(
+        self,
+        joint_angles: dict[str, float],
+    ) -> dict:
+        return self._api().preview_joint_targets(
+            joint_angles,
+            read_actual=True,
+        )
+
+    def set_speed(self, speed: int) -> dict:
+        self.speed = max(1, int(speed))
+        return self._api().configure_motion(
+            speed=self.speed
+        )
+
+    def emergency_stop(self) -> dict:
+        if not self.is_connected():
+            return {
+                "success": False,
+                "message": "Hand not connected",
+            }
+        return self._api().emergency_stop()
 
     def get_status(self) -> dict:
         try:
-            status = self._api().get_status()
-            if self._last_error and not status.get("last_error"):
-                status["last_error"] = self._last_error
-            return status
+            return self._api().get_status()
         except Exception as exc:
             return {
                 "connected": False,
                 "last_error": str(exc),
             }
-
-    def pause_control(self) -> None:
-        """暂停控制时关闭电机扭矩。"""
-        if not self.is_connected():
-            return
-
-        result = self._api().emergency_stop()
-        if not result.get("success", False):
-            print(
-                "[RobotBridge] 暂停控制时关闭扭矩失败: "
-                f"{result}"
-            )
 
     def disconnect(self) -> None:
         try:
@@ -414,10 +491,6 @@ class RobotBridge:
         finally:
             self._connected = False
 
-
-# ============================================================
-# EMA 平滑
-# ============================================================
 
 class EMASmoother:
     def __init__(self, alpha: float = 0.3):
@@ -432,34 +505,83 @@ class EMASmoother:
         self,
         angles: dict[str, float],
     ) -> dict[str, float]:
-        smoothed = {}
+        result = {}
         for name, angle in angles.items():
-            previous = self._prev.get(name, angle)
+            previous = self._prev.get(
+                name,
+                angle,
+            )
             value = (
                 self.alpha * angle
                 + (1.0 - self.alpha) * previous
             )
-            smoothed[name] = value
+            result[name] = value
             self._prev[name] = value
-        return smoothed
+        return result
 
     def reset(self) -> None:
         self._prev.clear()
 
 
-# ============================================================
-# 主程序
-# ============================================================
+def print_mapping_debug(debug: dict) -> None:
+    if not debug.get("success", False):
+        print(f"[Debug] 失败: {debug}")
+        return
+
+    print()
+    print(
+        "Joint          ID  Angle   Target  Actual   Delta  Reverse"
+    )
+    print("-" * 66)
+
+    joints = debug["joints"]
+    for joint_name in sorted(joints):
+        item = joints[joint_name]
+        actual = item["actual_raw"]
+        delta = item["delta_raw"]
+
+        actual_text = (
+            "N/A"
+            if actual is None
+            else str(actual)
+        )
+        delta_text = (
+            "N/A"
+            if delta is None
+            else f"{delta:+d}"
+        )
+
+        print(
+            f"{joint_name:13s} "
+            f"{item['motor_id']:2d} "
+            f"{item['angle_deg']:7.1f} "
+            f"{item['target_raw']:7d} "
+            f"{actual_text:>7s} "
+            f"{delta_text:>7s} "
+            f"{str(item['reversed']):>7s}"
+        )
+
+    print(
+        "[Debug] motion=",
+        debug.get("motion", {}),
+    )
+    print()
+
 
 def main(
-    connect_robot: bool = False,
-    camera_id: int = 0,
-    config_path: str | None = None,
-    calibration_path: str | None = None,
+    connect_robot: bool,
+    camera_id: int,
+    config_path: str | None,
+    calibration_path: str | None,
+    speed: int,
+    acc: int,
+    torque: int,
+    control_hz: float,
+    ema_alpha: float,
 ) -> None:
-    print("=" * 50)
-    print("  Stimulated Hand — 手部动作模仿")
-    print("=" * 50)
+    print("=" * 52)
+    print(" Stimulated Hand — 手部动作模仿")
+    print("=" * 52)
     print()
 
     print("[Init] 打开摄像头...")
@@ -475,56 +597,55 @@ def main(
         raise SystemExit(1)
 
     mapper = JointMapper()
-    smoother = EMASmoother(alpha=0.3)
+    smoother = EMASmoother(
+        alpha=ema_alpha
+    )
     bridge = RobotBridge(
         config_path=config_path,
         calibration_path=calibration_path,
+        speed=speed,
+        acc=acc,
+        torque=torque,
+        control_hz=control_hz,
     )
 
-    robot_available = False
-    if connect_robot:
-        print("[Init] 尝试连接机械手...")
-        robot_available = bridge.connect()
-
+    robot_available = (
+        bridge.connect()
+        if connect_robot
+        else False
+    )
     robot_enabled = robot_available
+    snapshot_hold = False
+    snapshot_angles: Optional[dict[str, float]] = None
     show_detail = False
 
     print()
-    print("  按键说明:")
-    print("    q / ESC — 退出")
-    print("    e       — 连接或暂停/恢复机械手控制")
-    print("    s       — 打印机械手状态和当前关节角")
-    print("    t       — 切换简洁/详细显示")
+    print("按键:")
+    print("  E       实时跟随 / 暂停保持")
+    print("  P/Space 截取当前姿态并固定")
+    print("  D       打印方向和 raw 映射")
+    print("  X       急停并关闭扭矩")
+    print("  [ / ]   降低 / 提高 speed")
+    print("  S       打印状态")
+    print("  T       简洁 / 详细显示")
+    print("  Q/ESC   退出")
     print()
 
-    if not robot_available:
-        print(
-            "[Info] 机械手未连接，仅运行视觉追踪模式"
-        )
-        print(
-            "[Info] 按 E 键可再次尝试连接机械手"
-        )
-    else:
-        print(
-            "[Info] 机械手已连接，按 E 可暂停/恢复控制"
-        )
-
-    fps_frame_count = 0
+    fps_count = 0
     fps_last_time = time.time()
     fps_value = 0.0
+    joint_angles: Optional[
+        dict[str, float]
+    ] = None
 
     last_hand_time = time.monotonic()
-    no_hand_stopped = False
     no_hand_timeout = 0.5
-    joint_angles: Optional[dict[str, float]] = None
+    no_hand_stopped = False
 
     try:
         while True:
             success, frame = tracker.get_frame()
             if not success:
-                print(
-                    "[Warn] 读取摄像头帧失败，跳过"
-                )
                 continue
 
             hands = tracker.detect(frame)
@@ -548,6 +669,7 @@ def main(
 
                 if (
                     robot_enabled
+                    and not snapshot_hold
                     and bridge.is_connected()
                 ):
                     bridge.send_joint_angles(
@@ -570,33 +692,38 @@ def main(
                     > no_hand_timeout
                 )
             ):
-                # 丢手后不继续保持可能错误的姿态。
-                bridge.pause_control()
+                result = bridge.emergency_stop()
                 robot_enabled = False
+                snapshot_hold = False
+                snapshot_angles = None
                 no_hand_stopped = True
                 print(
-                    "[Safety] 超过 0.5 秒未检测到手，"
-                    "已暂停控制并关闭扭矩"
+                    "[Safety] 丢手超过 0.5 秒，"
+                    f"已急停: {result}"
                 )
 
-            fps_frame_count += 1
-            if fps_frame_count >= 30:
+            fps_count += 1
+            if fps_count >= 30:
                 now = time.time()
                 fps_value = (
                     30.0
                     / (now - fps_last_time + 1e-9)
                 )
                 fps_last_time = now
-                fps_frame_count = 0
+                fps_count = 0
 
             status = {
                 "robot_connected":
                     bridge.is_connected(),
-                "robot_enabled": robot_enabled,
+                "robot_enabled":
+                    robot_enabled,
+                "snapshot_hold":
+                    snapshot_hold,
                 "fps": fps_value,
                 "show_detail": show_detail,
+                "speed": bridge.speed,
+                "ema_alpha": smoother.alpha,
             }
-
             display = render_frame(
                 frame,
                 hands,
@@ -620,62 +747,140 @@ def main(
                         "[Action] 尝试连接机械手..."
                     )
                     if bridge.connect():
-                        robot_available = True
                         robot_enabled = True
+                        snapshot_hold = False
+                        snapshot_angles = None
                         smoother.reset()
                         print(
-                            "[Action] 连接成功，实时控制已开启"
+                            "[Action] 实时跟随已开启"
                         )
-                    else:
-                        robot_available = False
-                        robot_enabled = False
-                        print(
-                            "[Action] 连接失败，继续视觉追踪"
-                        )
+                elif robot_enabled:
+                    result = bridge.pause_hold()
+                    robot_enabled = False
+                    snapshot_hold = False
+                    snapshot_angles = None
+                    print(
+                        "[Action] 实时跟随已暂停；"
+                        f"保持最后目标: {result}"
+                    )
                 else:
-                    robot_enabled = not robot_enabled
-                    if robot_enabled:
-                        smoother.reset()
+                    robot_enabled = True
+                    snapshot_hold = False
+                    snapshot_angles = None
+                    smoother.reset()
+                    print(
+                        "[Action] 实时跟随已恢复"
+                    )
+
+            elif key in (ord("p"), ord(" ")):
+                if not bridge.is_connected():
+                    print(
+                        "[Snapshot] 机械手未连接"
+                    )
+                elif not joint_angles:
+                    print(
+                        "[Snapshot] 当前未检测到手"
+                    )
+                else:
+                    snapshot_angles = dict(joint_angles)
+                    result = bridge.snapshot_pose(
+                        snapshot_angles
+                    )
+                    if result.get("success", False):
+                        robot_enabled = False
+                        snapshot_hold = True
                         print(
-                            "[Action] 机械手实时控制：开启"
+                            "[Snapshot] 已固定当前姿态"
+                        )
+                        print(
+                            "[Snapshot] target_raw=",
+                            result.get("target_raw"),
                         )
                     else:
-                        bridge.pause_control()
                         print(
-                            "[Action] 机械手实时控制：暂停，"
-                            "电机扭矩已关闭"
+                            f"[Snapshot] 失败: {result}"
                         )
 
-            elif key == ord("s"):
-                robot_status = bridge.get_status()
-                print(
-                    f"[Status] 机械手: {robot_status}"
+            elif key == ord("d"):
+                debug_angles = (
+                    snapshot_angles
+                    if snapshot_hold
+                    else joint_angles
                 )
 
+                if not debug_angles:
+                    print(
+                        "[Debug] 当前没有可分析的姿态"
+                    )
+                else:
+                    source = (
+                        "snapshot"
+                        if snapshot_hold
+                        else "live"
+                    )
+                    print(
+                        f"[Debug] source={source}"
+                    )
+                    debug = bridge.debug_mapping(
+                        dict(debug_angles)
+                    )
+                    print_mapping_debug(debug)
+
+            elif key == ord("x"):
+                result = bridge.emergency_stop()
+                robot_enabled = False
+                snapshot_hold = False
+                snapshot_angles = None
+                print(
+                    f"[Emergency Stop] {result}"
+                )
+
+            elif key == ord("["):
+                config = bridge.set_speed(
+                    bridge.speed - 10
+                )
+                print(
+                    "[Motion] speed ↓",
+                    config,
+                )
+
+            elif key == ord("]"):
+                config = bridge.set_speed(
+                    bridge.speed + 10
+                )
+                print(
+                    "[Motion] speed ↑",
+                    config,
+                )
+
+            elif key == ord("s"):
+                print(
+                    "[Status]",
+                    bridge.get_status(),
+                )
                 if joint_angles:
                     print(
-                        "[Status] 当前 17 关节角:"
+                        "[Status] 当前视觉关节角:"
                     )
-                    for name in sorted(joint_angles):
+                    for name in sorted(
+                        joint_angles
+                    ):
                         print(
-                            f"  {name:12s}: "
+                            f"  {name:13s}: "
                             f"{joint_angles[name]:7.2f}°"
                         )
-                else:
-                    print(
-                        "[Status] 当前未检测到手"
-                    )
 
             elif key == ord("t"):
                 show_detail = not show_detail
                 print(
-                    "[Display] 模式: "
-                    f"{'详细' if show_detail else '简洁'}"
+                    "[Display]",
+                    "详细"
+                    if show_detail
+                    else "简洁",
                 )
 
     except KeyboardInterrupt:
         print("\n[Exit] 用户中断")
-
     finally:
         print("[Cleanup] 正在清理...")
         try:
@@ -688,43 +893,56 @@ def main(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=(
-            "Stimulated Hand — 手部动作模仿模块"
-        ),
-        formatter_class=(
-            argparse.RawDescriptionHelpFormatter
-        ),
-        epilog=r"""
-示例:
-  python -m stimulated_hand.main
-  python -m stimulated_hand.main --robot
-  python -m stimulated_hand.main --camera 1
-  python -m stimulated_hand.main --robot ^
-      --calibration .\flexible_hand\hardware\calibration.yaml
-""",
+        description="Stimulated Hand"
     )
     parser.add_argument(
         "--robot",
         action="store_true",
-        help="启动时自动连接机械手",
     )
     parser.add_argument(
         "--camera",
         type=int,
         default=0,
-        help="摄像头设备编号（默认 0）",
     )
     parser.add_argument(
         "--config",
         type=str,
         default=None,
-        help="config_safe.yaml 路径",
     )
     parser.add_argument(
         "--calibration",
         type=str,
         default=None,
-        help="数字 Motor ID limits YAML 路径",
+    )
+    parser.add_argument(
+        "--speed",
+        type=int,
+        default=20,
+        help="电机速度字段，建议从 20、30、40 逐步测试",
+    )
+    parser.add_argument(
+        "--acc",
+        type=int,
+        default=10,
+        help="加速度字段 0~254",
+    )
+    parser.add_argument(
+        "--torque",
+        type=int,
+        default=100,
+        help="扭矩限制字段 0~1000",
+    )
+    parser.add_argument(
+        "--control-hz",
+        type=float,
+        default=20.0,
+        help="视觉目标下发频率，不等于电机物理速度",
+    )
+    parser.add_argument(
+        "--ema-alpha",
+        type=float,
+        default=0.3,
+        help="视觉平滑系数；越大响应越快、抖动越明显",
     )
     args = parser.parse_args()
 
@@ -733,4 +951,9 @@ if __name__ == "__main__":
         camera_id=args.camera,
         config_path=args.config,
         calibration_path=args.calibration,
+        speed=args.speed,
+        acc=args.acc,
+        torque=args.torque,
+        control_hz=args.control_hz,
+        ema_alpha=args.ema_alpha,
     )

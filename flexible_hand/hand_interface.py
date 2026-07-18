@@ -1,19 +1,18 @@
 """
-hand_interface.py --- 与上层既有接口兼容的轻量底层实现
+hand_interface.py --- 上层统一接口与实时视觉调度
 
-上层原调用方式无需修改：
-
-    from hand_interface import init, do_gesture, get_status, cleanup
-
+兼容固定接口：
     init()
-    do_gesture("hand_open")
-    status = get_status()
+    do_gesture(...)
+    get_status()
     cleanup()
 
-额外兼容原上层文件中的：
-    do_joint_command(joint_positions, hold_time_sec=3.0)
+额外提供：
+    do_joint_command(...)
+    update_from_vision(...)
+    emergency_stop()
 
-底层不再创建 OrcaHand，不运行旧自动撞限位校准。
+本文件不创建 OrcaHand，也不运行旧的自动撞限位校准。
 """
 
 from __future__ import annotations
@@ -22,19 +21,30 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Dict, Mapping, Optional
 
-from .multi_motor_control import (
-    MultiMotorControl,
-    MultiMotorResult,
-)
-from .runtime_config import (
-    ConfigError,
-    GESTURE_ANGLES,
-    RuntimeConfig,
-    load_runtime_config,
-)
+try:
+    from .multi_motor_control import (
+        MultiMotorControl,
+        MultiMotorResult,
+    )
+    from .runtime_config import (
+        ConfigError,
+        GESTURE_ANGLES,
+        RuntimeConfig,
+        load_runtime_config,
+    )
+except ImportError:
+    from multi_motor_control import (
+        MultiMotorControl,
+        MultiMotorResult,
+    )
+    from runtime_config import (
+        ConfigError,
+        GESTURE_ANGLES,
+        RuntimeConfig,
+        load_runtime_config,
+    )
 
 
 logger = logging.getLogger("hand_interface")
@@ -49,6 +59,12 @@ DEFAULT_ACC = 10
 DEFAULT_TORQUE = 100
 DEFAULT_CONTROL_HZ = 20.0
 
+# 运行参数。可由 configure_motion() 在 init() 前或运行中修改。
+_MOTION_SPEED = DEFAULT_SPEED
+_MOTION_ACC = DEFAULT_ACC
+_MOTION_TORQUE = DEFAULT_TORQUE
+_CONTROL_HZ = DEFAULT_CONTROL_HZ
+
 
 @dataclass
 class _StreamStats:
@@ -59,7 +75,7 @@ class _StreamStats:
 
 
 class _LatestFrameScheduler:
-    """视觉实时控制使用的 latest-wins 调度器。"""
+    """视觉侧帧率高于总线时，仅保留最新的一帧。"""
 
     def __init__(
         self,
@@ -67,6 +83,9 @@ class _LatestFrameScheduler:
         bus_lock: threading.RLock,
         control_hz: float = DEFAULT_CONTROL_HZ,
     ):
+        if control_hz <= 0:
+            raise ValueError("control_hz must be > 0")
+
         self._controller = controller
         self._bus_lock = bus_lock
         self._period = 1.0 / control_hz
@@ -152,15 +171,23 @@ class _LatestFrameScheduler:
 
             try:
                 with self._bus_lock:
-                    self._controller.set_torque_many(
-                        targets.keys(),
-                        True,
+                    torque_ok, torque_failures = (
+                        self._controller.set_torque_many(
+                            targets.keys(),
+                            True,
+                        )
                     )
+                    if not torque_ok:
+                        raise RuntimeError(
+                            "torque_enable_failed: "
+                            f"{torque_failures}"
+                        )
+
                     result = self._controller.set_positions_sync(
                         targets,
-                        speed=DEFAULT_SPEED,
-                        acc=DEFAULT_ACC,
-                        torque=DEFAULT_TORQUE,
+                        speed=_MOTION_SPEED,
+                        acc=_MOTION_ACC,
+                        torque=_MOTION_TORQUE,
                         wait=False,
                     )
 
@@ -175,9 +202,7 @@ class _LatestFrameScheduler:
             except Exception as exc:
                 self.stats.failed += 1
                 self.last_error = str(exc)
-                logger.exception(
-                    "Realtime command failed"
-                )
+                logger.exception("Realtime command failed")
 
             next_send = time.monotonic() + self._period
 
@@ -194,7 +219,7 @@ _state_lock = threading.RLock()
 _bus_lock = threading.RLock()
 
 
-def _failed_gesture(
+def _failed(
     error_code: int,
     message: str,
 ) -> dict:
@@ -206,22 +231,6 @@ def _failed_gesture(
     }
 
 
-def _require_ready() -> Optional[dict]:
-    if not _connected or hand is None:
-        return _failed_gesture(
-            ERROR_NOT_CONNECTED,
-            "hand is not connected",
-        )
-
-    if not _calibrated or _config is None:
-        return _failed_gesture(
-            ERROR_NOT_CALIBRATED,
-            "hand is not calibrated",
-        )
-
-    return None
-
-
 def _execute_angles(
     joint_positions: Mapping[str, float],
     wait: bool = True,
@@ -229,16 +238,12 @@ def _execute_angles(
     if hand is None or _config is None:
         raise RuntimeError("Hand is not initialized")
 
-    raw_targets = _config.angles_to_raw(
-        joint_positions
-    )
+    raw_targets = _config.angles_to_raw(joint_positions)
 
     with _bus_lock:
-        torque_ok, torque_failures = (
-            hand.set_torque_many(
-                raw_targets.keys(),
-                True,
-            )
+        torque_ok, torque_failures = hand.set_torque_many(
+            raw_targets.keys(),
+            True,
         )
         if not torque_ok:
             return MultiMotorResult(
@@ -250,32 +255,256 @@ def _execute_angles(
 
         return hand.set_positions_sync(
             raw_targets,
-            speed=DEFAULT_SPEED,
-            acc=DEFAULT_ACC,
-            torque=DEFAULT_TORQUE,
+            speed=_MOTION_SPEED,
+            acc=_MOTION_ACC,
+            torque=_MOTION_TORQUE,
             wait=wait,
-            timeout= 50.0,
+            timeout=50.0,
             tolerance=30,
         )
 
+
+
+def configure_motion(
+    speed: int | None = None,
+    acc: int | None = None,
+    torque: int | None = None,
+    control_hz: float | None = None,
+) -> dict:
+    """配置实时运动参数。
+
+    speed:
+        Feetech WritePosEx 的速度字段。值越大通常运动越快，
+        但这里不假定它等于某个固定 deg/s。
+    acc:
+        加速度字段，范围 0~254。
+    torque:
+        WritePosEx 的扭矩限制字段，范围 0~1000。
+    control_hz:
+        视觉目标下发频率，不是电机物理转速。
+        已连接后不能改变；需要重新 init。
+    """
+    global _MOTION_SPEED
+    global _MOTION_ACC
+    global _MOTION_TORQUE
+    global _CONTROL_HZ
+
+    if speed is not None:
+        value = int(speed)
+        if value <= 0:
+            raise ValueError("speed must be > 0")
+        _MOTION_SPEED = value
+
+    if acc is not None:
+        value = int(acc)
+        if not 0 <= value <= 254:
+            raise ValueError("acc must be in [0, 254]")
+        _MOTION_ACC = value
+
+    if torque is not None:
+        value = int(torque)
+        if not 0 <= value <= 1000:
+            raise ValueError("torque must be in [0, 1000]")
+        _MOTION_TORQUE = value
+
+    if control_hz is not None:
+        value = float(control_hz)
+        if not 1.0 <= value <= 100.0:
+            raise ValueError("control_hz must be in [1, 100]")
+        if _scheduler is not None:
+            raise RuntimeError(
+                "control_hz cannot change while scheduler is running; "
+                "cleanup() and init() again"
+            )
+        _CONTROL_HZ = value
+
+    return {
+        "speed": _MOTION_SPEED,
+        "acc": _MOTION_ACC,
+        "torque": _MOTION_TORQUE,
+        "control_hz": _CONTROL_HZ,
+    }
+
+
+def pause_realtime() -> dict:
+    """停止接收队列中的旧视觉帧，但保持当前电机目标和扭矩。"""
+    if hand is None or not _connected:
+        return {
+            "success": False,
+            "error_code": ERROR_NOT_CONNECTED,
+            "message": "Hand not connected",
+        }
+
+    if _scheduler is not None:
+        _scheduler.clear()
+
+    return {
+        "success": True,
+        "error_code": 0,
+        "message": "Realtime queue cleared; holding last target",
+    }
+
+
+def hold_snapshot(
+    joint_positions: Mapping[str, float],
+) -> dict:
+    """把当前视觉姿态下发一次，并保持该固定目标。
+
+    与 update_from_vision() 不同，本函数不会持续接收后续视觉帧。
+    """
+    global _last_error
+
+    if hand is None or not _connected:
+        return {
+            "success": False,
+            "status": "failed",
+            "error_code": ERROR_NOT_CONNECTED,
+            "message": "Hand not connected",
+        }
+
+    if _config is None or not _calibrated:
+        return {
+            "success": False,
+            "status": "failed",
+            "error_code": ERROR_NOT_CALIBRATED,
+            "message": "Hand not calibrated",
+        }
+
+    try:
+        if _scheduler is not None:
+            _scheduler.clear()
+
+        _config.validate_angles(joint_positions)
+        result = _execute_angles(
+            joint_positions,
+            wait=False,
+        )
+
+        if not result.success:
+            raise RuntimeError(
+                f"{result.message}: {result.failures}"
+            )
+
+        return {
+            "success": True,
+            "status": "snapshot_hold",
+            "error_code": 0,
+            "message": "Snapshot target sent and held",
+            "target_raw": dict(result.targets),
+            "speed": _MOTION_SPEED,
+            "acc": _MOTION_ACC,
+            "torque": _MOTION_TORQUE,
+        }
+
+    except ConfigError as exc:
+        _last_error = str(exc)
+        return {
+            "success": False,
+            "status": "failed",
+            "error_code": ERROR_INVALID_COMMAND,
+            "message": str(exc),
+        }
+    except Exception as exc:
+        _last_error = str(exc)
+        return {
+            "success": False,
+            "status": "failed",
+            "error_code": ERROR_EXECUTION,
+            "message": str(exc),
+        }
+
+
+def preview_joint_targets(
+    joint_positions: Mapping[str, float],
+    read_actual: bool = True,
+) -> dict:
+    """输出角度到电机 raw 的映射，便于判断方向是否反了。"""
+    if _config is None:
+        return {
+            "success": False,
+            "error_code": ERROR_NOT_CALIBRATED,
+            "message": "Runtime config is not loaded",
+        }
+
+    try:
+        _config.validate_angles(joint_positions)
+        target_raw = _config.angles_to_raw(
+            joint_positions
+        )
+
+        actual_positions: Dict[int, int] = {}
+        failures: Dict[int, str] = {}
+
+        if read_actual and hand is not None and _connected:
+            with _bus_lock:
+                actual_positions, failures = (
+                    hand.read_positions(
+                        target_raw.keys()
+                    )
+                )
+
+        joints = {}
+        for joint_name, angle in joint_positions.items():
+            motor_id = _config.joint_to_motor_map[
+                joint_name
+            ]
+            target = target_raw[motor_id]
+            actual = actual_positions.get(motor_id)
+
+            joints[joint_name] = {
+                "angle_deg": float(angle),
+                "motor_id": motor_id,
+                "target_raw": target,
+                "actual_raw": actual,
+                "delta_raw": (
+                    None
+                    if actual is None
+                    else target - actual
+                ),
+                "reversed": (
+                    joint_name
+                    in _config.reverse_joints
+                ),
+                "rom_deg": list(
+                    _config.joint_roms[joint_name]
+                ),
+                "raw_limits": [
+                    _config.calibrations[
+                        joint_name
+                    ].raw_min,
+                    _config.calibrations[
+                        joint_name
+                    ].raw_max,
+                ],
+            }
+
+        return {
+            "success": True,
+            "error_code": 0,
+            "joints": joints,
+            "read_failures": failures,
+            "motion": {
+                "speed": _MOTION_SPEED,
+                "acc": _MOTION_ACC,
+                "torque": _MOTION_TORQUE,
+                "control_hz": _CONTROL_HZ,
+            },
+        }
+
+    except Exception as exc:
+        return {
+            "success": False,
+            "error_code": ERROR_INVALID_COMMAND,
+            "message": str(exc),
+        }
 
 def init(
     config_path: str | None = None,
     calibration_path: str | None = None,
 ) -> bool:
-    """加载 config_safe.yaml、连接、验证人工标定并回中。
-
-    不运行旧 OrcaHand 自动撞限位校准。
-
-    Returns:
-        连接、标定验证和回中全部成功时返回 True。
-    """
-    global hand
-    global _config
-    global _scheduler
-    global _connected
-    global _calibrated
-    global _last_error
+    """加载配置、连接、验证人工 limits，并同步回中。"""
+    global hand, _config, _scheduler
+    global _connected, _calibrated, _last_error
 
     with _state_lock:
         cleanup()
@@ -286,79 +515,64 @@ def init(
                 config_path=config_path,
                 calibration_path=calibration_path,
             )
-        except Exception as exc:
-            _last_error = f"config load failed: {exc}"
-            print(f"[hand_interface] {_last_error}")
-            return False
+            hand = MultiMotorControl(
+                port=_config.port,
+                baudrate=_config.baudrate,
+            )
 
-        hand = MultiMotorControl(
-            port=_config.port,
-            baudrate=_config.baudrate,
-        )
+            if not hand.connect():
+                raise ConnectionError(
+                    f"cannot connect to {_config.port}"
+                )
 
-        if not hand.connect():
-            _connected = False
-            _last_error = (
-                f"cannot connect to {_config.port}"
+            _connected = True
+            _calibrated = _config.calibrated
+
+            print(
+                f"[hand_interface] connected: "
+                f"{_config.port} @ {_config.baudrate}"
             )
             print(
-                f"[hand_interface] connect: "
-                f"{_last_error}"
+                f"[hand_interface] calibrated: "
+                f"{_calibrated}"
             )
-            return False
 
-        _connected = True
-        _calibrated = _config.calibrated
+            if not _calibrated:
+                invalid = [
+                    joint_name
+                    for joint_name, calibration
+                    in _config.calibrations.items()
+                    if not calibration.valid
+                ]
+                raise ConfigError(
+                    "manual raw calibration incomplete: "
+                    + ", ".join(invalid)
+                )
 
-        print(
-            f"[hand_interface] connected: "
-            f"{_config.port} @ {_config.baudrate}"
-        )
-        print(
-            f"[hand_interface] calibrated: "
-            f"{_calibrated}"
-        )
-
-        if not _calibrated:
-            invalid = [
-                joint_name
-                for joint_name, calibration
-                in _config.calibrations.items()
-                if not calibration.valid
-            ]
-            _last_error = (
-                "manual raw calibration incomplete: "
-                + ", ".join(invalid)
-            )
-            print(f"[hand_interface] {_last_error}")
-            return False
-
-        try:
             neutral_result = _execute_angles(
                 _config.neutral_position,
                 wait=True,
             )
             if not neutral_result.success:
-                _last_error = (
+                raise RuntimeError(
                     f"neutral failed: "
                     f"{neutral_result.message}; "
                     f"{neutral_result.failures}"
                 )
-                print(f"[hand_interface] {_last_error}")
-                return False
+
+            _scheduler = _LatestFrameScheduler(
+                controller=hand,
+                bus_lock=_bus_lock,
+                control_hz=_CONTROL_HZ,
+            )
+            _scheduler.start()
+            return True
+
         except Exception as exc:
-            _last_error = f"neutral failed: {exc}"
-            print(f"[hand_interface] {_last_error}")
+            _last_error = str(exc)
+            print(f"[hand_interface] init failed: {_last_error}")
+            cleanup()
             return False
-
-        _scheduler = _LatestFrameScheduler(
-            controller=hand,
-            bus_lock=_bus_lock,
-            control_hz=DEFAULT_CONTROL_HZ,
-        )
-        _scheduler.start()
-
-        return True
 
 
 def do_gesture(
@@ -366,37 +580,35 @@ def do_gesture(
     hold_time_sec: float = 2.0,
     return_to_neutral: bool = False,
 ) -> dict:
-    """执行 hand_open / hand_close / pinch_grasp。"""
     global _last_error
 
-    readiness_error = _require_ready()
-    if readiness_error is not None:
-        return readiness_error
-
+    if not _connected or hand is None:
+        return _failed(
+            ERROR_NOT_CONNECTED,
+            "hand is not connected",
+        )
+    if not _calibrated or _config is None:
+        return _failed(
+            ERROR_NOT_CALIBRATED,
+            "hand is not calibrated",
+        )
     if gesture_name not in GESTURE_ANGLES:
-        return _failed_gesture(
+        return _failed(
             ERROR_INVALID_COMMAND,
             f"unknown gesture: {gesture_name}",
         )
 
     try:
-        assert _scheduler is not None
-        assert _config is not None
-
-        _scheduler.clear()
+        if _scheduler is not None:
+            _scheduler.clear()
 
         result = _execute_angles(
             GESTURE_ANGLES[gesture_name],
             wait=True,
         )
         if not result.success:
-            message = (
+            raise RuntimeError(
                 f"{result.message}: {result.failures}"
-            )
-            _last_error = message
-            return _failed_gesture(
-                ERROR_EXECUTION,
-                message,
             )
 
         if hold_time_sec > 0:
@@ -408,146 +620,35 @@ def do_gesture(
                 wait=True,
             )
             if not neutral_result.success:
-                message = (
-                    f"return to neutral failed: "
+                raise RuntimeError(
+                    "return to neutral failed: "
                     f"{neutral_result.message}; "
                     f"{neutral_result.failures}"
-                )
-                _last_error = message
-                return _failed_gesture(
-                    ERROR_EXECUTION,
-                    message,
                 )
 
         return {
             "success": True,
             "execution_status": "completed",
             "current_action": gesture_name,
-            "connected": _connected,
-            "calibrated": _calibrated,
+            "connected": True,
+            "calibrated": True,
             "error_code": 0,
             "error_message": "",
         }
 
     except ConfigError as exc:
         _last_error = str(exc)
-        return _failed_gesture(
-            ERROR_INVALID_COMMAND,
-            str(exc),
-        )
+        return _failed(ERROR_INVALID_COMMAND, str(exc))
     except Exception as exc:
         _last_error = str(exc)
-        return _failed_gesture(
-            ERROR_EXECUTION,
-            str(exc),
-        )
-
-
-def get_status() -> dict:
-    """返回与上层旧接口相同的核心字段。"""
-    if hand is None:
-        return {"connected": False}
-
-    currents: Dict[int, int] = {}
-    temperatures: Dict[int, int] = {}
-    positions: Dict[int, int] = {}
-
-    current_failures: Dict[int, str] = {}
-    temperature_failures: Dict[int, str] = {}
-    position_failures: Dict[int, str] = {}
-
-    if _connected:
-        try:
-            with _bus_lock:
-                positions, position_failures = (
-                    hand.read_positions()
-                )
-                currents, current_failures = (
-                    hand.read_currents_raw()
-                )
-                temperatures, temperature_failures = (
-                    hand.read_temperatures()
-                )
-        except Exception as exc:
-            logger.exception("Status read failed")
-            global _last_error
-            _last_error = str(exc)
-
-    status = {
-        "connected": _connected,
-        "calibrated": _calibrated,
-        # 保留上层旧字段名。当前值是寄存器 raw，避免假装成 mA。
-        "motor_currents": currents,
-        "motor_temps": temperatures,
-        "motor_positions": positions,
-        # 新增字段不会破坏旧上层。
-        "motor_currents_raw": currents,
-        "position_failures": position_failures,
-        "current_failures": current_failures,
-        "temperature_failures": temperature_failures,
-        "last_error": _last_error,
-    }
-
-    if _scheduler is not None:
-        status["stream_statistics"] = {
-            "submitted": _scheduler.stats.submitted,
-            "sent": _scheduler.stats.sent,
-            "dropped": _scheduler.stats.dropped,
-            "failed": _scheduler.stats.failed,
-            "last_error": _scheduler.last_error,
-        }
-
-    return status
-
-
-def cleanup() -> None:
-    """停止实时线程、关闭全部扭矩并释放 COM 口。"""
-    global hand
-    global _config
-    global _scheduler
-    global _connected
-    global _calibrated
-
-    with _state_lock:
-        if _scheduler is not None:
-            _scheduler.stop()
-            _scheduler = None
-
-        if hand is not None:
-            try:
-                if hand.is_connected:
-                    with _bus_lock:
-                        ok, failures = (
-                            hand.emergency_stop()
-                        )
-                        if not ok:
-                            logger.error(
-                                "Torque disable failures: %s",
-                                failures,
-                            )
-            except Exception:
-                logger.exception(
-                    "Failed to disable torque"
-                )
-
-            try:
-                hand.disconnect()
-            except Exception:
-                logger.exception(
-                    "Failed to disconnect"
-                )
-
-        hand = None
-        _config = None
-        _connected = False
-        _calibrated = False
+        return _failed(ERROR_EXECUTION, str(exc))
 
 
 def do_joint_command(
     joint_positions: dict,
     hold_time_sec: float = 3.0,
 ) -> dict:
-    """兼容上层原有的关节角度控制接口。"""
+    """阻塞式确定姿态接口，保留给非实时上层。"""
     global _last_error
 
     if not _connected or hand is None:
@@ -556,7 +657,6 @@ def do_joint_command(
             "error_code": ERROR_NOT_CONNECTED,
             "message": "Hand not connected",
         }
-
     if not _calibrated or _config is None:
         return {
             "status": "failed",
@@ -566,24 +666,17 @@ def do_joint_command(
 
     try:
         _config.validate_angles(joint_positions)
-
-        assert _scheduler is not None
-        _scheduler.clear()
+        if _scheduler is not None:
+            _scheduler.clear()
 
         result = _execute_angles(
             joint_positions,
             wait=True,
         )
         if not result.success:
-            message = (
+            raise RuntimeError(
                 f"{result.message}: {result.failures}"
             )
-            _last_error = message
-            return {
-                "status": "failed",
-                "error_code": ERROR_EXECUTION,
-                "message": message,
-            }
 
         if hold_time_sec > 0:
             time.sleep(float(hold_time_sec))
@@ -615,29 +708,20 @@ def update_from_vision(
     confidence: Optional[float] = None,
     min_confidence: float = 0.5,
 ) -> dict:
-    """非阻塞实时接口：视觉帧只保留最新一帧。
-
-    这是实时模仿推荐使用的入口；旧上层仍可继续调用
-    do_joint_command()。
-    """
+    """非阻塞视觉帧入口；旧帧会被新帧覆盖。"""
     if not _connected or hand is None:
         return {
             "status": "failed",
             "error_code": ERROR_NOT_CONNECTED,
             "message": "Hand not connected",
         }
-
     if not _calibrated or _config is None:
         return {
             "status": "failed",
             "error_code": ERROR_NOT_CALIBRATED,
             "message": "Hand not calibrated",
         }
-
-    if (
-        confidence is not None
-        and confidence < min_confidence
-    ):
+    if confidence is not None and confidence < min_confidence:
         return {
             "status": "ignored",
             "error_code": 0,
@@ -645,12 +729,11 @@ def update_from_vision(
         }
 
     try:
-        raw_targets = _config.angles_to_raw(
-            joint_positions
-        )
-        assert _scheduler is not None
-        sequence = _scheduler.submit(raw_targets)
+        raw_targets = _config.angles_to_raw(joint_positions)
+        if _scheduler is None:
+            raise RuntimeError("Realtime scheduler is not running")
 
+        sequence = _scheduler.submit(raw_targets)
         return {
             "status": "queued",
             "error_code": 0,
@@ -671,8 +754,68 @@ def update_from_vision(
         }
 
 
+def get_status() -> dict:
+    if hand is None:
+        return {
+            "connected": False,
+            "calibrated": False,
+            "last_error": _last_error,
+        }
+
+    positions: Dict[int, int] = {}
+    currents: Dict[int, int] = {}
+    temperatures: Dict[int, int] = {}
+    position_failures: Dict[int, str] = {}
+    current_failures: Dict[int, str] = {}
+    temperature_failures: Dict[int, str] = {}
+
+    if _connected:
+        try:
+            with _bus_lock:
+                positions, position_failures = (
+                    hand.read_positions()
+                )
+                currents, current_failures = (
+                    hand.read_currents_raw()
+                )
+                temperatures, temperature_failures = (
+                    hand.read_temperatures()
+                )
+        except Exception as exc:
+            logger.exception("Status read failed")
+
+    result = {
+        "connected": _connected,
+        "calibrated": _calibrated,
+        "motor_positions": positions,
+        "motor_currents": currents,
+        "motor_currents_raw": currents,
+        "motor_temps": temperatures,
+        "position_failures": position_failures,
+        "current_failures": current_failures,
+        "temperature_failures": temperature_failures,
+        "last_error": _last_error,
+        "motion_config": {
+            "speed": _MOTION_SPEED,
+            "acc": _MOTION_ACC,
+            "torque": _MOTION_TORQUE,
+            "control_hz": _CONTROL_HZ,
+        },
+    }
+
+    if _scheduler is not None:
+        result["stream_statistics"] = {
+            "submitted": _scheduler.stats.submitted,
+            "sent": _scheduler.stats.sent,
+            "dropped": _scheduler.stats.dropped,
+            "failed": _scheduler.stats.failed,
+            "last_error": _scheduler.last_error,
+        }
+
+    return result
+
+
 def emergency_stop() -> dict:
-    """扩展接口：立即清空视觉帧并关闭 1~17 扭矩。"""
     if hand is None or not _connected:
         return {
             "success": False,
@@ -692,3 +835,31 @@ def emergency_stop() -> dict:
         "message": "" if ok else str(failures),
         "failures": failures,
     }
+
+
+def cleanup() -> None:
+    global hand, _config, _scheduler
+    global _connected, _calibrated
+
+    with _state_lock:
+        if _scheduler is not None:
+            _scheduler.stop()
+            _scheduler = None
+
+        if hand is not None:
+            try:
+                if hand.is_connected:
+                    with _bus_lock:
+                        hand.emergency_stop()
+            except Exception:
+                logger.exception("Failed to disable torque")
+
+            try:
+                hand.disconnect()
+            except Exception:
+                logger.exception("Failed to disconnect")
+
+        hand = None
+        _config = None
+        _connected = False
+        _calibrated = False
