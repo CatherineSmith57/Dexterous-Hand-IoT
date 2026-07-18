@@ -199,7 +199,7 @@ class WaveShareClient(MotorClient):
         self,
         motor_ids: Sequence[int],
         enabled: bool,
-        retries: int = -1,
+        retries: int = 5,
         retry_interval: float = 0.25,
     ) -> None:
         """Sets whether torque is enabled for the motors."""
@@ -212,7 +212,7 @@ class WaveShareClient(MotorClient):
                 result, error = self.packet_handler.write1ByteTxRx(
                     motor_id, SMS_STS_TORQUE_ENABLE, int(enabled)
                 )
-                if result != COMM_SUCCESS or error != 0:
+                if result != COMM_SUCCESS or error != 0 and error != 1:
                     failed_ids.append(motor_id)
 
             remaining_ids = failed_ids
@@ -250,7 +250,7 @@ class WaveShareClient(MotorClient):
             result, error = self.packet_handler.write1ByteTxRx(
                 motor_id, SMS_STS_MODE, waveshare_mode
             )
-            if result != COMM_SUCCESS or error != 0:
+            if result != COMM_SUCCESS or error != 0 and error != 1:
                 logging.warning(
                     'Failed to set mode %d for motor %d (result=%d, error=%d)',
                     mode, motor_id, result, error
@@ -349,7 +349,7 @@ class WaveShareClient(MotorClient):
                 self._default_acc
             )
             
-            if result != COMM_SUCCESS or error != 0:
+            if result != COMM_SUCCESS or error != 0 and error != 1:
                 logging.warning(
                     'Failed to write position %d to motor %d (result=%d, error=%d)',
                     raw_pos, motor_id, result, error
@@ -387,7 +387,7 @@ class WaveShareClient(MotorClient):
                 raw_current
             )
             
-            if result != COMM_SUCCESS or error != 0:
+            if result != COMM_SUCCESS or error != 0 and error != 1:
                 logging.warning(
                     'Failed to write current %d to motor %d (result=%d, error=%d)',
                     raw_current, motor_id, result, error

@@ -1,0 +1,69 @@
+joints:
+  wrist:
+    motor_id: 1
+    raw_min: 1742
+    raw_max: 3204
+  index_pip:
+    motor_id: 2
+    raw_min: 467
+    raw_max: 2423
+  index_mcp:
+    motor_id: 3
+    raw_min: 10
+    raw_max: 2942
+  index_abd:
+    motor_id: 4
+    raw_min: 1830
+    raw_max: 2980
+  middle_abd:
+    motor_id: 5
+    raw_min: 984
+    raw_max: 2351
+  ring_abd:
+    motor_id: 6
+    raw_min: 224
+    raw_max: 3102
+  ring_mcp:
+    motor_id: 7
+    raw_min: 411
+    raw_max: 3845
+  ring_pip:
+    motor_id: 8
+    raw_min: 333
+    raw_max: 2496
+  middle_pip:
+    motor_id: 9
+    raw_min: 333
+    raw_max: 2496
+  middle_mcp:
+    motor_id: 10
+    raw_min: 161
+    raw_max: 2815
+  pinky_pip:
+    motor_id: 11
+    raw_min: 162
+    raw_max: 2915
+  pinky_mcp:
+    motor_id: 12
+    raw_min: 581
+    raw_max: 3340
+  pinky_abd:
+    motor_id: 13
+    raw_min: 404
+    raw_max: 2621
+  thumb_abd:
+    motor_id: 14
+    raw_min: 0
+    raw_max: 3277
+  thumb_mcp:
+    motor_id: 15
+    raw_min: 500
+    raw_max: 3973
+  thumb_dip:
+    motor_id: 16
+    raw_min: null
+    raw_max: null
+  thumb_cmc:
+    motor_id: 17
+    raw_min: null
+    raw_max: null
